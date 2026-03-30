@@ -13,7 +13,7 @@ app = Flask(__name__)
 #CORS(app)
 
 # 1. CORS: Permitimos cualquier origen temporalmente para pruebas
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "https://tu-proyecto.vercel.app"])
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "https://exper-track.vercel.app/"])
 
 #configuracion para la bd en AWS RDS
 DB_USER = "admin"
@@ -28,8 +28,8 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=2) # <--- Aquí configu
 app.config['JWT_SECRET_KEY'] = 'qJTJ%_(7(t(FW2ggS5X8#h!1ftm!i+'
 
 app.config['JWT_TOKEN_LOCATION'] = ['cookies']
-app.config['JWT_COOKIE_SECURE'] = False  # Solo enviar por HTTPS (necesario en producción)
-app.config['JWT_COOKIE_CSRF_PROTECT'] = True # Protección contra ataques CSRF
+app.config['JWT_COOKIE_SECURE'] = True  # Solo enviar por HTTPS (necesario en producción)
+app.config['JWT_COOKIE_CSRF_PROTECT'] = False # Protección contra ataques CSRF
 app.config['JWT_ACCESS_COOKIE_PATH'] = '/'
 app.config['JWT_COOKIE_SAMESITE'] = 'None' # Necesario si Vercel y AWS están en dominios distintos (LAX PARA LOCAL por ahora)
 jwt = JWTManager(app)
