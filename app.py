@@ -13,7 +13,7 @@ app = Flask(__name__)
 #CORS(app)
 
 # 1. CORS: Permitimos cualquier origen temporalmente para pruebas
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "https://exper-track.vercel.app/"])
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "https://exper-track.vercel.app"])
 
 #configuracion para la bd en AWS RDS
 DB_USER = "admin"
@@ -75,6 +75,48 @@ def check_connection():
             "status": "error",
             "message": "No se pudo conectar a la base de datos",
             "error_detail": str(e)
+        }), 500
+    
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    
+    # 1. Validar si el correo ya existe
+    existe = Usuario.query.filter_by(correo=data.get('correo')).first()
+    if existe:
+        return jsonify({
+            "status": "error", 
+            "message": "El correo ya está registrado"
+        }), 400
+
+    try:
+        # 2. Crear la nueva instancia del modelo
+        nuevo_usuario = Usuario(
+            nombre=data.get('nombre'),
+            apellido_paterno=data.get('apellido_paterno'),
+            apellido_materno=data.get('apellido_materno'),
+            rol=data.get('rol'), # 'Usuario Solicitante', 'Técnico' o 'Cliente'
+            telefono=data.get('telefono'),
+            correo=data.get('correo'),
+            contraseña=data.get('contraseña') # Recuerda: luego la encriptaremos
+        )
+
+        # 3. Guardar en la base de datos de AWS
+        db.session.add(nuevo_usuario)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": "Usuario registrado exitosamente",
+            "user": nuevo_usuario.to_dict()
+        }), 201
+
+    except Exception as e:
+        db.session.rollback() # Si algo falla, cancelamos la operación
+        return jsonify({
+            "status": "error", 
+            "message": str(e)
         }), 500
     
 
