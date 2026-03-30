@@ -1,33 +1,48 @@
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import pymysql
+from models import db, Usuario
 
-# Driver para conectar Python con MySQL
+#driver para conectar Python con MySQL
 pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURACIÓN DE TU RDS ---
-# Reemplaza con tus datos reales de AWS
+#configuracion para la bd en AWS RDS
 DB_USER = "admin"
 DB_PASS = "ResidenciasH2026*"
 DB_HOST = "bd-resi.cixqu4s6y0t3.us-east-1.rds.amazonaws.com"
 DB_NAME = "expertrack"
 
-# Construcción de la URI de conexión
+#construcción de la URI de conexión
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
 
-db = SQLAlchemy(app)
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    email = data.get('correo')
+    password = data.get('contraseña')
 
-# --- ENDPOINT DE PRUEBA ---
-@app.route('/check-connection')
+    #se busca el usuario usando el modelo
+    user = Usuario.query.filter_by(correo=email).first()
+
+    if user and user.contraseña == password:
+        return jsonify({
+            "status": "success",
+            "message": f"Bienvenido, {user.nombre}",
+            "user": user.to_dict()
+        }), 200
+    
+    return jsonify({"status": "error", "message": "Credenciales inválidas"}), 401
+
+#verificar conexiona la bd en aws
+@app.route('/check-connection-bd')
 def check_connection():
     try:
-        # Intentamos ejecutar una consulta simple de SQL
-        # 'SELECT 1' es la forma más rápida de ver si la DB responde
         db.session.execute(db.text('SELECT 1'))
         return jsonify({
             "status": "success",
@@ -43,15 +58,5 @@ def check_connection():
         }), 500
     
 
-#prueba de CD/CD
-@app.route('/check')
-def check():
-    return {
-        "status": "online",
-        "message": "CI/CD is working perfectly!",
-        "version": "1.0.1"
-    }, 200
-
-if __name__ == '__main__':
-    # Puerto 5000 es el estándar de Flask
+if __name__ == '__main__':    
     app.run(host='0.0.0.0', port=5000, debug=True)
