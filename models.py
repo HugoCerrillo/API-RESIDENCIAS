@@ -16,7 +16,7 @@ class Usuario(db.Model):
     estatus = db.Column(db.Boolean, default=True)
     telefono = db.Column(db.String(15))
     correo = db.Column(db.String(100), unique=True, nullable=False)
-    contraseña = db.Column(db.String(25), nullable=False)
+    contraseña = db.Column(db.String(255), nullable=False)
 
     def to_dict(self):
         """Convierte el objeto a diccionario para enviarlo como JSON"""
