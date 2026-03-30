@@ -41,6 +41,16 @@ def check_connection():
             "message": "No se pudo conectar a la base de datos",
             "error_detail": str(e)
         }), 500
+    
+
+#prueba de CD/CD
+@app.route('/check')
+def check():
+    return {
+        "status": "online",
+        "message": "CI/CD is working perfectly!",
+        "version": "1.0.1"
+    }, 200
 
 if __name__ == '__main__':
     # Puerto 5000 es el estándar de Flask
