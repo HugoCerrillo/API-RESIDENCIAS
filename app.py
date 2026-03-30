@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, make_response
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, set_access_cookies
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -44,7 +45,7 @@ def login():
     #se busca el usuario usando el modelo
     user = Usuario.query.filter_by(correo=email).first()
 
-    if user and user.contraseña == password:
+    if user and check_password_hash(user.contraseña, password):
         access_token = create_access_token(identity=str(user.id_usuario))        
         response = make_response(jsonify({
             "status": "success",
@@ -99,7 +100,7 @@ def register():
             rol=data.get('rol'), # 'Usuario Solicitante', 'Técnico' o 'Cliente'
             telefono=data.get('telefono'),
             correo=data.get('correo'),
-            contraseña=data.get('contraseña') # Recuerda: luego la encriptaremos
+            contraseña=generate_password_hash(data.get('contraseña')) # Contraseña encriptada
         )
 
         # 3. Guardar en la base de datos de AWS
