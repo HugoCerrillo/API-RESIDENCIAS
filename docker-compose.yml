@@ -1,17 +1,23 @@
 version: '3.8'
 
 services:
-  # Tu API de Flask
+  # Tu API de Flask con Prolog
   flask-api:
     build: ./backend
     restart: always
-    # No usamos "ports" para que nadie entre por la IP pública, solo por el túnel
+    # No exponemos puertos al mundo, solo a la red interna de Docker
     expose:
       - "5000"
+    environment:
+      - DATABASE_URL=${{ secrets.DATABASE_URL }} # Si usas variables de entorno
 
-  # El túnel que nos da el HTTPS
-  cloudflare-tunnel:
-    image: cloudflare/cloudflared:latest
+  # El túnel que nos da el HTTPS Permanente
+  ngrok:
+    image: ngrok/ngrok:latest
     restart: always
-    # Reemplaza 'TU_TOKEN_AQUI' con el código que sacaste de Cloudflare Zero Trust
-    command: tunnel --no-autoupdate run --token TU_TOKEN_AQUI
+    environment:
+      - NGROK_AUTHTOKEN=3Bh07Ul68s8215nVZKjYAX4EBa4_4CnaLg96UdTGpmsKzJdct  # Pon tu token de la web de Ngrok
+    command:
+      - "http"
+      - "--domain=discordantly-fussy-arlie.ngrok-free.dev" # El que acabas de crear
+      - "flask-api:5000"
