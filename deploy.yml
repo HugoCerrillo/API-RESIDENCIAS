@@ -17,6 +17,5 @@ jobs:
           script: |
             cd ~/expertrack-api
             git pull origin main
-            source venv/bin/activate
-            pip install -r requirements.txt
-            sudo systemctl restart expertrack
+            docker-compose down
+            docker-compose up -d --build

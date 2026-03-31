@@ -8,8 +8,8 @@ services:
     # No exponemos puertos al mundo, solo a la red interna de Docker
     expose:
       - "5000"
-    environment:
-      - DATABASE_URL=${{ secrets.DATABASE_URL }} # Si usas variables de entorno
+    # environment:
+    #   - DATABASE_URL=${{ secrets.DATABASE_URL }} # Las credenciales ya están en app.py
 
   # El túnel que nos da el HTTPS Permanente
   ngrok:
