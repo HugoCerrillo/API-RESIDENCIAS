@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, set_access_cookies
+import smtplib
+from email.mime.text import MIMEText
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import pymysql
@@ -35,6 +37,29 @@ app.config['JWT_ACCESS_COOKIE_PATH'] = '/'
 app.config['JWT_COOKIE_SAMESITE'] = 'None' # Necesario si Vercel y AWS están en dominios distintos (LAX PARA LOCAL por ahora)
 jwt = JWTManager(app)
 db.init_app(app)
+
+# --- CONFIGURACION DE CORREO (Reemplaza con tus datos reales) ---
+SMTP_SERVER = "smtp.gmail.com" 
+SMTP_PORT = 587
+SMTP_USER = "expertrack2026@outlook.com"
+SMTP_PASSWORD = "[PASSWORD]"
+
+def enviar_correo_recuperacion(destinatario, enlace):
+    msg = MIMEText(f"Haz clic en el siguiente enlace para recuperar tu contraseña:\n\n{enlace}")
+    msg['Subject'] = 'Recuperación de Contraseña - ExperTrack'
+    msg['From'] = SMTP_USER
+    msg['To'] = destinatario
+
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Error al enviar correo: {e}")
+        return False
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -120,6 +145,31 @@ def register():
             "message": str(e)
         }), 500
     
+
+@app.route('/recuperar-password', methods=['POST'])
+def recuperar_password():
+    data = request.json
+    email = data.get('correo')
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Por favor ingresa un correo electrónico"}), 400
+
+    # 1. Buscar si el usuario existe
+    user = Usuario.query.filter_by(correo=email).first()
+    if not user:
+        return jsonify({"status": "error", "message": "El correo no está registrado"}), 404
+        
+    # 2. Generar token con expiración corta (15 min) 
+    reset_token = create_access_token(identity=str(user.id_usuario), expires_delta=timedelta(minutes=15))
+    
+    # 3. Construir enlace
+    enlace = f"https://exper-track.vercel.app/reset-password?token={reset_token}"
+    
+    # 4. Enviar correo
+    if enviar_correo_recuperacion(email, enlace):
+        return jsonify({"status": "success", "message": "Se ha enviado un correo con las instrucciones"}), 200
+    else:
+        return jsonify({"status": "error", "message": "Hubo un problema al intentar enviar el correo. Revisa tus credenciales SMTP."}), 500
 
 if __name__ == '__main__':    
     app.run(host='0.0.0.0', port=5000, debug=True)
