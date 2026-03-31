@@ -42,7 +42,7 @@ db.init_app(app)
 SMTP_SERVER = "smtp.gmail.com" 
 SMTP_PORT = 587
 SMTP_USER = "expertrack2026@outlook.com"
-SMTP_PASSWORD = "[PASSWORD]"
+SMTP_PASSWORD = "ExperTrack*"
 
 def enviar_correo_recuperacion(destinatario, enlace):
     msg = MIMEText(f"Haz clic en el siguiente enlace para recuperar tu contraseña:\n\n{enlace}")
