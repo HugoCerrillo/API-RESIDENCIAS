@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  # Tu API de Flask
+  flask-api:
+    build: ./backend
+    restart: always
+    # No usamos "ports" para que nadie entre por la IP pública, solo por el túnel
+    expose:
+      - "5000"
+
+  # El túnel que nos da el HTTPS
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    # Reemplaza 'TU_TOKEN_AQUI' con el código que sacaste de Cloudflare Zero Trust
+    command: tunnel --no-autoupdate run --token TU_TOKEN_AQUI
