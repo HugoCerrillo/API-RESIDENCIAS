@@ -228,7 +228,7 @@ def get_usuario(id):
 #----------------------------------------------------
 #endpoint para agregar un usuario mediante el rol de administrador 
 @app.route('/usuarios', methods=['POST'])
-@admin_required #solo los administradores pueden acceder a este endpoint, reutiliza la logica de registro
+#@admin_required #solo los administradores pueden acceder a este endpoint, reutiliza la logica de registro
 def admin_add_user():
     data = request.json
     return crear_usuario_logica(data)
@@ -237,7 +237,7 @@ def admin_add_user():
 #----------------------------------------------------
 #endpoint para actualizar un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['PUT'])
-@admin_required #solo los administradores pueden acceder a este endpoint
+#@admin_required #solo los administradores pueden acceder a este endpoint
 def update_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
@@ -274,7 +274,7 @@ def update_usuario(id):
 #----------------------------------------------------
 #endpoint para eliminar un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['DELETE'])
-@admin_required #solo los administradores pueden acceder a este endpoint
+#@admin_required #solo los administradores pueden acceder a este endpoint
 def delete_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
