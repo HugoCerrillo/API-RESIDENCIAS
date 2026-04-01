@@ -19,10 +19,15 @@ class Usuario(db.Model):
     contraseña = db.Column(db.String(255), nullable=False)
 
     def to_dict(self):
-        """Convierte el objeto a diccionario para enviarlo como JSON"""
+        """Convierte el objeto a diccionario completo para el frontend"""
         return {
-            "id": self.id_usuario,
+            "id_usuario": self.id_usuario,
             "nombre": self.nombre,
+            "apellido_paterno": self.apellido_paterno,
+            "apellido_materno": self.apellido_materno or "",
             "rol": self.rol,
-            "correo": self.correo
+            "estatus": self.estatus,
+            "telefono": self.telefono or "",
+            "correo": self.correo,
+            "fecha_registro": self.fecha_registro.isoformat() if self.fecha_registro else None
         }
