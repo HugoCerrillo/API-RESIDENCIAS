@@ -509,6 +509,20 @@ def update_equipo(id):
                 )
                 db.session.add(nueva_version)
 
+        if 'perifericos' in data:
+            # Borrar los periféricos actuales para reemplazarlos con la nueva lista
+            Periferico.query.filter_by(id_equipo=id).delete()
+            
+            for p in data['perifericos']:
+                nuevo_p = Periferico(
+                    id_equipo=id,
+                    tipo=p.get('tipo'),
+                    marca=p.get('marca'),
+                    numero_serie=p.get('numero_serie'),
+                    id_inventario_interno=p.get('id_inventario_interno')
+                )
+                db.session.add(nuevo_p)
+
         db.session.commit()
         return jsonify({"status": "success", "message": "Equipo y especificaciones actualizados"}), 200
 
