@@ -52,6 +52,8 @@ jwt = JWTManager(app) #inicializamos el JWT
 db.init_app(app) #inicializamos la base de datos
 #----------------------------------------------------
 
+#---
+
 #----------------------------------------------------
 #decorador para restringir acceso a administradores
 def admin_required(fn):
