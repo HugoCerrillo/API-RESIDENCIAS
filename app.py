@@ -324,7 +324,7 @@ def recuperar_password():
 #--- ENDPOINTS DE INVENTARIO (EQUIPOS) ---
 
 @app.route('/equipos', methods=['POST'])
-@jwt_required()
+#@jwt_required()
 def create_equipo():
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -395,7 +395,7 @@ def create_equipo():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/equipos', methods=['GET'])
-@jwt_required()
+#@jwt_required()
 def get_equipos():
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -420,7 +420,7 @@ def get_equipos():
     }), 200
 
 @app.route('/equipos/<int:id>', methods=['GET'])
-@jwt_required()
+#@jwt_required()
 def get_equipo_detalle(id):
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -445,7 +445,7 @@ def get_equipo_detalle(id):
     }), 200
 
 @app.route('/equipos/<int:id>', methods=['PUT'])
-@jwt_required()
+#@jwt_required()
 def update_equipo(id):
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -515,7 +515,7 @@ def update_equipo(id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/equipos/<int:id>', methods=['DELETE'])
-@jwt_required()
+#@jwt_required()
 def delete_equipo(id):
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
