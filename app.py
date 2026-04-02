@@ -195,7 +195,7 @@ def crear_usuario_logica(data):
 #----------------------------------------------------
 #endpoint para obtener todos los usuarios
 @app.route('/usuarios', methods=['GET'])
-#@admin_required #solo los administradores pueden acceder a esta ruta
+@admin_required #solo los administradores pueden acceder a esta ruta
 def get_usuarios():
     usuarios = Usuario.query.all() #obtenemos todos los usuarios
     return jsonify({
@@ -230,7 +230,7 @@ def get_usuario(id):
 #----------------------------------------------------
 #endpoint para agregar un usuario mediante el rol de administrador 
 @app.route('/usuarios', methods=['POST'])
-#@admin_required #solo los administradores pueden acceder a este endpoint, reutiliza la logica de registro
+@admin_required #solo los administradores pueden acceder a este endpoint, reutiliza la logica de registro
 def admin_add_user():
     data = request.json
     return crear_usuario_logica(data)
@@ -239,7 +239,7 @@ def admin_add_user():
 #----------------------------------------------------
 #endpoint para actualizar un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['PUT'])
-#@admin_required #solo los administradores pueden acceder a este endpoint
+@admin_required #solo los administradores pueden acceder a este endpoint
 def update_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
@@ -276,7 +276,7 @@ def update_usuario(id):
 #----------------------------------------------------
 #endpoint para eliminar un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['DELETE'])
-#@admin_required #solo los administradores pueden acceder a este endpoint
+@admin_required #solo los administradores pueden acceder a este endpoint
 def delete_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
@@ -326,7 +326,7 @@ def recuperar_password():
 #--- ENDPOINTS DE INVENTARIO (EQUIPOS) ---
 
 @app.route('/equipos', methods=['POST'])
-#@jwt_required()
+@jwt_required()
 def create_equipo():
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -397,7 +397,7 @@ def create_equipo():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/equipos', methods=['GET'])
-#@jwt_required()
+@jwt_required()
 def get_equipos():
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -422,7 +422,7 @@ def get_equipos():
     }), 200
 
 @app.route('/equipos/<int:id>', methods=['GET'])
-#@jwt_required()
+@jwt_required()
 def get_equipo_detalle(id):
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -447,7 +447,7 @@ def get_equipo_detalle(id):
     }), 200
 
 @app.route('/equipos/<int:id>', methods=['PUT'])
-#@jwt_required()
+@jwt_required()
 def update_equipo(id):
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
@@ -517,7 +517,7 @@ def update_equipo(id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/equipos/<int:id>', methods=['DELETE'])
-#@jwt_required()
+@jwt_required()
 def delete_equipo(id):
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
