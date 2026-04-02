@@ -72,8 +72,8 @@ def admin_required(fn):
 #----------------------------------------------------
 
 #----------------------------------------------------
-#configuracion de correo
-SMTP_SERVER = "smtp.gmail.com" #servidor de correo
+#configuracion de correo (Outlook/Office 365)
+SMTP_SERVER = "smtp.office365.com" #servidor de correo para outlook
 SMTP_PORT = 587 #puerto de correo
 SMTP_USER = "expertrack2026@outlook.com" #correo de envio
 SMTP_PASSWORD = "ExperTrack*" #contraseña del correo
