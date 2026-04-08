@@ -12,17 +12,12 @@ from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHec
 from pyswip import Prolog
 
 
-# Intentamos inicializar Prolog
-try:
-    prolog = Prolog()
-    # Verificamos si los archivos existen antes de consultarlos
-    if os.path.exists("motor_prolog/reglas.pl"):
-        prolog.consult("motor_prolog/reglas.pl")
-        prolog_status = "Conectado y reglas.pl cargado"
-    else:
-        prolog_status = "Conectado (pero reglas.pl no encontrado)"
-except Exception as e:
-    prolog_status = f"Error de conexión: {str(e)}"
+prolog = Prolog()
+
+# Definimos las rutas relativas correctamente
+base_path = os.path.dirname(__file__)
+path_reglas = os.path.join(base_path, "motor_prolog", "reglas.pl").replace("\\", "/")
+prolog.consult(path_reglas)
 
 
 #----------------------------------------------------
@@ -572,36 +567,49 @@ def delete_equipo(id):
 #----------------------------------------------------
 
 #Prolog
-@app.route('/prolog-status', methods=['GET'])
-def check_prolog():
+@app.route('/diagnosticar', methods=['POST'])
+def diagnosticar():
     try:
-        # 1. Prueba de escritura (assertz)
-        # Insertamos un hecho de prueba único
-        prolog.assertz("conexion_activa(python_a_prolog)")
-        
-        # 2. Prueba de lectura (query)
-        resultado = list(prolog.query("conexion_activa(X)"))
-        
-        # 3. Limpieza inmediata de la prueba
-        prolog.query("retractall(conexion_activa(_))")
-        
-        if len(resultado) > 0:
-            return jsonify({
-                "motor": "SWI-Prolog",
-                "estado": "Operacional",
-                "prueba_lectura": resultado[0]['X'],
-                "mensaje": "¡Python habilitó Prolog correctamente!"
-            }), 200
-        else:
-            return jsonify({"estado": "Error", "detalle": "Consulta vacía"}), 500
-            
-    except Exception as e:
-        return jsonify({
-            "estado": "Error de ejecución",
-            "detalle": str(e),
-            "tip": "Asegúrate de que la arquitectura (x64/x32) de Python y Prolog sea la misma."
-        }), 500
+        data = request.json
+        if not data:
+            return jsonify({"status": "error", "mensaje": "No se recibieron datos"}), 400
 
+        tipo = data.get('tipo')
+        sintoma = data.get('sintoma')
+        historial = data.get('historial', [])
+
+        # 1. Limpiar memoria antes de procesar
+        # Usamos la regla que definimos en reglas.pl
+        list(prolog.query("limpiar_memoria"))
+
+        # 2. Inyectar el historial
+        for paso in historial:
+            pregunta = paso['p']
+            respuesta = paso['r'] # 'si' o 'no'
+            # Es vital envolver el valor en comillas simples para Prolog
+            prolog.assertz(f"respuesta('{pregunta}', {respuesta})")
+
+        # 3. Ejecutar la consulta maestra
+        query_str = f"siguiente_paso('{tipo}', '{sintoma}', Accion, Valor)"
+        results = list(prolog.query(query_str))
+
+        if results:
+            res = results[0]
+            # PySWIP a veces devuelve bytes o objetos Atóm, los forzamos a string
+            return jsonify({
+                "status": "success",
+                "accion": str(res['Accion']),
+                "valor": str(res['Valor'])
+            })
+        else:
+            return jsonify({
+                "status": "error", 
+                "mensaje": "El motor de inferencia no devolvió resultados"
+            }), 404
+
+    except Exception as e:
+        print(f"Error en el diagnóstico: {e}")
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
 #----------------------------------------------------
 
 if __name__ == '__main__':    
