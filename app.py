@@ -72,11 +72,11 @@ def admin_required(fn):
 #----------------------------------------------------
 
 #----------------------------------------------------
-#configuracion de correo (Outlook/Office 365)
-SMTP_SERVER = "smtp.office365.com" #servidor de correo para outlook
+#configuracion de correo (Gmail)
+SMTP_SERVER = "smtp.gmail.com" #servidor de correo para Gmail
 SMTP_PORT = 587 #puerto de correo
-SMTP_USER = "expertrack2026@outlook.com" #correo de envio
-SMTP_PASSWORD = "ExperTrack*" #contraseña del correo
+SMTP_USER = "trackexper@gmail.com" #correo de envio
+SMTP_PASSWORD = "ResidenciasH2026*" # RECORDATORIO: Cambiar por Contraseña de Aplicación de 16 dígitos
 #----------------------------------------------------
 
 #----------------------------------------------------
