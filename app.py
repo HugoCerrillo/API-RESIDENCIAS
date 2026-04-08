@@ -9,6 +9,21 @@ import pymysql
 from datetime import timedelta
 from functools import wraps  #para usar decoradores
 from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho
+from pyswip import Prolog
+
+
+# Intentamos inicializar Prolog
+try:
+    prolog = Prolog()
+    # Verificamos si los archivos existen antes de consultarlos
+    if os.path.exists("motor_prolog/reglas.pl"):
+        prolog.consult("motor_prolog/reglas.pl")
+        prolog_status = "Conectado y reglas.pl cargado"
+    else:
+        prolog_status = "Conectado (pero reglas.pl no encontrado)"
+except Exception as e:
+    prolog_status = f"Error de conexión: {str(e)}"
+
 
 #----------------------------------------------------
 #driver para conectar Python con MySQL
@@ -554,6 +569,39 @@ def delete_equipo(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+#----------------------------------------------------
+
+#Prolog
+@app.route('/prolog-status', methods=['GET'])
+def check_prolog():
+    try:
+        # 1. Prueba de escritura (assertz)
+        # Insertamos un hecho de prueba único
+        prolog.assertz("conexion_activa(python_a_prolog)")
+        
+        # 2. Prueba de lectura (query)
+        resultado = list(prolog.query("conexion_activa(X)"))
+        
+        # 3. Limpieza inmediata de la prueba
+        prolog.query("retractall(conexion_activa(_))")
+        
+        if len(resultado) > 0:
+            return jsonify({
+                "motor": "SWI-Prolog",
+                "estado": "Operacional",
+                "prueba_lectura": resultado[0]['X'],
+                "mensaje": "¡Python habilitó Prolog correctamente!"
+            }), 200
+        else:
+            return jsonify({"estado": "Error", "detalle": "Consulta vacía"}), 500
+            
+    except Exception as e:
+        return jsonify({
+            "estado": "Error de ejecución",
+            "detalle": str(e),
+            "tip": "Asegúrate de que la arquitectura (x64/x32) de Python y Prolog sea la misma."
+        }), 500
+
 #----------------------------------------------------
 
 if __name__ == '__main__':    
