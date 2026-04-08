@@ -8,7 +8,7 @@ from flask_cors import CORS
 import pymysql
 from datetime import timedelta
 from functools import wraps  #para usar decoradores
-from models import db, Usuario, Equipo, Periferico, Especificacion
+from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho
 
 #----------------------------------------------------
 #driver para conectar Python con MySQL
@@ -36,6 +36,9 @@ DB_NAME = "expertrack"
 #----------------------------------------------------
 #construcción de la URI de conexión
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}'
+app.config['SQLALCHEMY_BINDS'] = {
+    'hechos': f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/hechos_se'
+}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 #----------------------------------------------------
 

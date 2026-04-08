@@ -118,3 +118,62 @@ class Especificacion(db.Model):
             "fecha_registro": self.fecha_registro.isoformat() if self.fecha_registro else None,
             "es_actual": self.es_actual
         }
+
+# --- MODELOS PARA LA BASE DE DATOS DE HECHOS (SISTEMA EXPERTO) ---
+
+class CategoriaHecho(db.Model):
+    __bind_key__ = 'hechos'
+    __tablename__ = 'categorias'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), unique=True, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nombre": self.nombre
+        }
+
+class SintomaHecho(db.Model):
+    __bind_key__ = 'hechos'
+    __tablename__ = 'sintomas_iniciales'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    clave = db.Column(db.String(100), unique=True, nullable=False)
+    descripcion = db.Column(db.String(255), nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "clave": self.clave,
+            "descripcion": self.descripcion
+        }
+
+class FallaHecho(db.Model):
+    __bind_key__ = 'hechos'
+    __tablename__ = 'fallas'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    tipo_equipo = db.Column(db.Enum('PC', 'Laptop'), nullable=False)
+    sintoma_id = db.Column(db.Integer, db.ForeignKey('sintomas_iniciales.id'), nullable=False)
+    categoria_id = db.Column(db.Integer, db.ForeignKey('categorias.id'), nullable=False)
+    pregunta_pista = db.Column(db.Text, nullable=False)
+    diagnostico = db.Column(db.Text, nullable=False)
+    recomendacion = db.Column(db.Text, nullable=False)
+
+    # Relaciones para facilitar consultas
+    sintoma = db.relationship('SintomaHecho', backref='fallas', lazy=True)
+    categoria = db.relationship('CategoriaHecho', backref='fallas', lazy=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tipo_equipo": self.tipo_equipo,
+            "sintoma_id": self.sintoma_id,
+            "categoria_id": self.categoria_id,
+            "pregunta_pista": self.pregunta_pista,
+            "diagnostico": self.diagnostico,
+            "recomendacion": self.recomendacion,
+            "sintoma": self.sintoma.descripcion if self.sintoma else "",
+            "categoria": self.categoria.nombre if self.categoria else ""
+        }
