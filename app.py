@@ -76,7 +76,7 @@ def admin_required(fn):
 SMTP_SERVER = "smtp.gmail.com" #servidor de correo para Gmail
 SMTP_PORT = 587 #puerto de correo
 SMTP_USER = "trackexper@gmail.com" #correo de envio
-SMTP_PASSWORD = "2423967941674046" #contraseña de aplicación
+SMTP_PASSWORD = "ehvxwcvwcveccqae" #contraseña de aplicación
 #----------------------------------------------------
 
 #----------------------------------------------------
