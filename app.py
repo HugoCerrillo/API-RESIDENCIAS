@@ -611,6 +611,24 @@ def diagnosticar():
     except Exception as e:
         print(f"Error en el diagnóstico: {e}")
         return jsonify({"status": "error", "mensaje": str(e)}), 500
+
+#----------------------------------------------------
+# Endpoints del Sistema Experto (hechos_se)
+
+@app.route('/sintomas', methods=['GET'])
+def get_sintomas():
+    try:
+        # Obtenemos todos los síntomas de la base de datos hechos_se mediante el bind_key automático
+        sintomas = SintomaHecho.query.all()
+        return jsonify({
+            "status": "success",
+            "sintomas": [s.to_dict() for s in sintomas]
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error al obtener síntomas: {str(e)}"
+        }), 500
 #----------------------------------------------------
 
 if __name__ == '__main__':    
