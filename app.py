@@ -618,8 +618,18 @@ def diagnosticar():
 @app.route('/sintomas', methods=['GET'])
 def get_sintomas():
     try:
-        # Obtenemos todos los síntomas de la base de datos hechos_se mediante el bind_key automático
-        sintomas = SintomaHecho.query.all()
+        # Recibimos el tipo desde los parámetros de la URL: /api/sintomas?tipo=PC
+        tipo = request.args.get('tipo')
+        
+        query = SintomaHecho.query
+        
+        if tipo:
+            # Hacemos un JOIN con la tabla de fallas (FallaHecho) para filtrar solo los síntomas
+            # que tengan al menos una falla registrada para ese tipo de equipo (PC o Laptop)
+            query = query.join(FallaHecho).filter(FallaHecho.tipo_equipo == tipo).distinct()
+        
+        sintomas = query.all()
+        
         return jsonify({
             "status": "success",
             "sintomas": [s.to_dict() for s in sintomas]
