@@ -209,7 +209,7 @@ def crear_usuario_logica(data):
 #----------------------------------------------------
 #endpoint para obtener todos los usuarios
 @app.route('/usuarios', methods=['GET'])
-@admin_required #solo los administradores pueden acceder a esta ruta
+#@admin_required #solo los administradores pueden acceder a esta ruta
 def get_usuarios():
     usuarios = Usuario.query.all() #obtenemos todos los usuarios
     return jsonify({
