@@ -209,7 +209,7 @@ def crear_usuario_logica(data):
 #----------------------------------------------------
 #endpoint para obtener todos los usuarios
 @app.route('/usuarios', methods=['GET'])
-#@admin_required #solo los administradores pueden acceder a esta ruta
+@jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def get_usuarios():
     usuarios = Usuario.query.all() #obtenemos todos los usuarios
     return jsonify({
@@ -219,11 +219,10 @@ def get_usuarios():
 #----------------------------------------------------
 
 
-
 #----------------------------------------------------
 #endpoint para obtener un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['GET'])
-#@admin_required #solo los administradores pueden acceder a este endpoint
+@jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def get_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
@@ -247,6 +246,7 @@ def get_usuario(id):
 #endpoint para agregar un usuario mediante el rol de administrador 
 @app.route('/usuarios', methods=['POST'])
 @admin_required #solo los administradores pueden acceder a este endpoint, reutiliza la logica de registro
+@jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def admin_add_user():
     data = request.json
     return crear_usuario_logica(data)
@@ -255,7 +255,7 @@ def admin_add_user():
 #----------------------------------------------------
 #endpoint para actualizar un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['PUT'])
-@admin_required #solo los administradores pueden acceder a este endpoint
+@jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def update_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
@@ -293,6 +293,7 @@ def update_usuario(id):
 #endpoint para eliminar un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['DELETE'])
 @admin_required #solo los administradores pueden acceder a este endpoint
+@jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def delete_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
