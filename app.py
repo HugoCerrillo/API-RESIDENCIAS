@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, set_access_cookies
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token
 import smtplib
 from email.mime.text import MIMEText
 from flask_sqlalchemy import SQLAlchemy
@@ -12,14 +12,16 @@ from functools import wraps  #para usar decoradores
 from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho
 from pyswip import Prolog
 
+#---------------------------------------------------------
+#----------Prolog ----------------
+prolog = Prolog() #inicializamos el motor de prolog
 
-prolog = Prolog()
+#definimos la ruta de las reglas de prolog
+base_path = os.path.dirname(__file__) #obtenemos la ruta del directorio actual
+path_reglas = os.path.join(base_path, "motor_prolog", "reglas.pl").replace("\\", "/") #obtenemos la ruta de las reglas
+prolog.consult(path_reglas) #cargamos las reglas en el motor de prolog
 
-# Definimos las rutas relativas correctamente
-base_path = os.path.dirname(__file__)
-path_reglas = os.path.join(base_path, "motor_prolog", "reglas.pl").replace("\\", "/")
-prolog.consult(path_reglas)
-
+#---------------------------------------------------------
 
 #----------------------------------------------------
 #driver para conectar Python con MySQL
@@ -38,19 +40,19 @@ CORS(app, supports_credentials=True, origins=["http://localhost:5173", "https://
 
 #----------------------------------------------------
 #configuracion para la bd en AWS RDS
-DB_USER = "admin"
-DB_PASS = "ResidenciasH2026*"
-DB_HOST = "bd-resi.cixqu4s6y0t3.us-east-1.rds.amazonaws.com"
-DB_NAME = "expertrack"
+DB_USER = "admin" #usuario de la bd
+DB_PASS = "ResidenciasH2026*" #contraseña de la bd
+DB_HOST = "bd-resi.cixqu4s6y0t3.us-east-1.rds.amazonaws.com" #host de la bd
+DB_NAME = "expertrack" #nombre de la bd
 #----------------------------------------------------
 
 #----------------------------------------------------
 #construcción de la URI de conexión
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}' #URI de conexión
 app.config['SQLALCHEMY_BINDS'] = {
     'hechos': f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/hechos_se'
-}
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+} #URI de conexión para hechos
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False #desactiva el seguimiento de modificaciones (sirve para ahorrar recursos)
 #----------------------------------------------------
 
 #----------------------------------------------------
@@ -58,15 +60,34 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=2) #configuramos la duracion del token
 app.config['JWT_SECRET_KEY'] = 'qJTJ%_(7(t(FW2ggS5X8#h!1ftm!i+' #clave secreta para firmar el token
 app.config['JWT_TOKEN_LOCATION'] = ['cookies'] #guardamos el token en cookies
-app.config['JWT_COOKIE_SECURE'] = True  #solo enviar por HTTPS (necesario en producción)
-app.config['JWT_COOKIE_CSRF_PROTECT'] = False #proteccion contra ataques CSRF
-app.config['JWT_ACCESS_COOKIE_PATH'] = '/'
-app.config['JWT_COOKIE_SAMESITE'] = 'None' #necesario si Vercel y AWS estan en dominios distintos (LAX PARA LOCAL por ahora)
+app.config['JWT_COOKIE_SECURE'] = True  #solo enviar por HTTPS (necesario ya desplegado)
+app.config['JWT_COOKIE_CSRF_PROTECT'] = False #desactivamos la proteccion CSRF (necesario si Vercel y AWS estan en dominios distintos)
+app.config['JWT_ACCESS_COOKIE_PATH'] = '/' #ruta de la cookie
+app.config['JWT_COOKIE_SAMESITE'] = 'None' #necesario si Vercel y AWS estan en dominios distintos (NONE para desplegado, LAX para local)
 jwt = JWTManager(app) #inicializamos el JWT
 db.init_app(app) #inicializamos la base de datos
 #----------------------------------------------------
 
-#---
+#----------------------------------------------------
+#Endpoint para verificar conexion a la bd en aws
+@app.route('/check-connection-bd')
+def check_connection():
+    try:
+        db.session.execute(db.text('SELECT 1')) #ejecutamos una consulta simple para verificar la conexion
+        return jsonify({
+            "status": "success",
+            "message": "¡Conexión establecida con AWS RDS!",
+            "database": DB_NAME,
+            "host": DB_HOST
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": "No se pudo conectar a la base de datos",
+            "error_detail": str(e)
+        }), 500
+#----------------------------------------------------
+
 
 #----------------------------------------------------
 #decorador para restringir acceso a administradores
@@ -96,10 +117,10 @@ SMTP_PASSWORD = "ehvxwcvwcveccqae" #contraseña de aplicación
 #----------------------------------------------------
 #funcion para enviar correos, recibe el destinatario y el enlace para recuperar la contraseña
 def enviar_correo_recuperacion(destinatario, enlace):
-    msg = MIMEText(f"Haz clic en el siguiente enlace para recuperar tu contraseña:\n\n{enlace}")
-    msg['Subject'] = 'Recuperación de Contraseña - ExperTrack'
-    msg['From'] = SMTP_USER
-    msg['To'] = destinatario
+    msg = MIMEText(f"Haz clic en el siguiente enlace para recuperar tu contraseña:\n\n{enlace}") #creamos el mensaje
+    msg['Subject'] = 'Recuperación de Contraseña - ExperTrack' #asunto del correo
+    msg['From'] = SMTP_USER #correo de envio
+    msg['To'] = destinatario #correo del destinatario
 
     try:
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT) #iniciamos la conexion con el servidor
@@ -113,18 +134,20 @@ def enviar_correo_recuperacion(destinatario, enlace):
         return False
 #----------------------------------------------------
 
-#----------------------------------------------------
+#---------------------------------------------------------------
+#--------- Endpoints para Modulo de Gestión de Usuarios ---------
+
 #endpoint para iniciar sesion, recibe el correo y la contraseña
 @app.route('/login', methods=['POST'])
 def login():
-    data = request.json
-    email = data.get('correo')
-    password = data.get('contraseña')
+    data = request.json #obtenemos los datos en json
+    email = data.get('correo') #obtenemos el correo
+    password = data.get('contraseña') #obtenemos la contraseña
 
     #se busca el usuario usando el modelo
-    user = Usuario.query.filter_by(correo=email).first()
+    user = Usuario.query.filter_by(correo=email).first() #buscamos el usuario por correo
 
-    if user and check_password_hash(user.contraseña, password):
+    if user and check_password_hash(user.contraseña, password): #verificamos que el usuario exista y la contraseña sea correcta
         access_token = create_access_token(identity=str(user.id_usuario)) #creamos el token
         response = make_response(jsonify({
             "status": "success",
@@ -140,36 +163,17 @@ def login():
     return jsonify({"status": "error", "message": "Correo o contraseña incorrectos"}), 401
 #----------------------------------------------------
 
-#----------------------------------------------------
-#verificar conexion a la bd en aws
-@app.route('/check-connection-bd')
-def check_connection():
-    try:
-        db.session.execute(db.text('SELECT 1')) #ejecutamos una consulta simple para verificar la conexion
-        return jsonify({
-            "status": "success",
-            "message": "¡Conexión establecida con AWS RDS!",
-            "database": DB_NAME,
-            "host": DB_HOST
-        }), 200
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": "No se pudo conectar a la base de datos",
-            "error_detail": str(e)
-        }), 500
-#----------------------------------------------------
 
 #----------------------------------------------------
-#endpoint para registrar usuarios, recibe el nombre, apellido paterno, apellido materno, rol, telefono, correo y contraseña
+#endpoint para registrar usuarios; recibe el nombre, apellido paterno, apellido materno, rol, telefono, correo y contraseña
 @app.route('/register', methods=['POST'])
 def register():
-    data = request.json
-    return crear_usuario_logica(data)
+    data = request.json #obtenemos los datos en json
+    return crear_usuario_logica(data) #llamamos a la funcion que contiene la logica
 
 def crear_usuario_logica(data):
     #primero verificamos si el correo ya existe
-    existe = Usuario.query.filter_by(correo=data.get('correo')).first()
+    existe = Usuario.query.filter_by(correo=data.get('correo')).first() #buscamos el usuario por correo
     if existe:
         return jsonify({
             "status": "error", 
@@ -190,7 +194,7 @@ def crear_usuario_logica(data):
 
         #guardamos el usuario en la base de datos
         db.session.add(nuevo_usuario)
-        db.session.commit()
+        db.session.commit() #confirmamos la transaccion
 
         return jsonify({
             "status": "success",
@@ -199,7 +203,7 @@ def crear_usuario_logica(data):
         }), 201
 
     except Exception as e:
-        db.session.rollback() #si algo falla, cancelamos la operacion
+        db.session.rollback() #si algo falla, cancelamos la operacion con un rollback
         return jsonify({
             "status": "error", 
             "message": str(e)
@@ -218,14 +222,13 @@ def get_usuarios():
     }), 200
 #----------------------------------------------------
 
-
 #----------------------------------------------------
 #endpoint para obtener un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['GET'])
 @jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def get_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
-    if not usuario:
+    if not usuario: #si no se encuentra el usuario 
         return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
     
     #retornamos el usuario en formato diccionario
@@ -248,8 +251,8 @@ def get_usuario(id):
 @admin_required #solo los administradores pueden acceder a este endpoint, reutiliza la logica de registro
 @jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def admin_add_user():
-    data = request.json
-    return crear_usuario_logica(data)
+    data = request.json #obtenemos los datos en json
+    return crear_usuario_logica(data) #llamamos a la funcion que contiene la logica
 #----------------------------------------------------
 
 #----------------------------------------------------
@@ -258,10 +261,10 @@ def admin_add_user():
 @jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def update_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
-    if not usuario:
+    if not usuario: #si no se encuentra el usuario
         return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
     
-    data = request.json
+    data = request.json #obtenemos los datos en json
     
     try:
         #actualizamos los datos del usuario si se envian
@@ -277,7 +280,7 @@ def update_usuario(id):
         if 'contraseña' in data: 
             usuario.contraseña = generate_password_hash(data['contraseña'])
 
-        db.session.commit() #guardamos los cambios
+        db.session.commit() #guardamos los cambios en la base de datos
         return jsonify({
             "status": "success",
             "message": "Usuario actualizado correctamente",
@@ -285,7 +288,7 @@ def update_usuario(id):
         }), 200
 
     except Exception as e:
-        db.session.rollback() #si algo falla, cancelamos la operacion
+        db.session.rollback() #si algo falla, cancelamos la operacion con un rollback
         return jsonify({"status": "error", "message": str(e)}), 500
 #----------------------------------------------------
 
@@ -315,10 +318,10 @@ def delete_usuario(id):
 #endpoint para recuperar la contraseña, recibe el correo y envia un enlace para restablecer la contraseña
 @app.route('/recuperar-password', methods=['POST'])
 def recuperar_password():
-    data = request.json
-    email = data.get('correo')
+    data = request.json #obtenemos los datos en json
+    email = data.get('correo') #obtenemos el correo
     
-    if not email:
+    if not email: #si no se llega un correo
         return jsonify({"status": "error", "message": "Por favor ingresa un correo electrónico"}), 400
 
     #primero buscamos si el usuario existe
@@ -340,17 +343,50 @@ def recuperar_password():
 #----------------------------------------------------
 
 #----------------------------------------------------
-#--- ENDPOINTS DE INVENTARIO (EQUIPOS) ---
+#endpoint para restablecer la contraseña, verifica el token y actualiza la contraseña
+@app.route('/restablecer-password', methods=['POST'])
+def restablecer_password():
+    data = request.json #obtenemos los datos en json
+    token = data.get('token') #obtenemos el token
+    nueva_password = data.get('nueva_contraseña') #obtenemos la nueva contraseña
+    
+    if not token or not nueva_password: #si no se llega un token o una nueva contraseña
+        return jsonify({"status": "error", "message": "Faltan datos requeridos (token o nueva_contraseña)"}), 400
+        
+    try:
+        #decodificamos el token (si ya expiro los 15 min, lanzara excepcion automaticamente)
+        decoded_token = decode_token(token)
+        usuario_id = decoded_token['sub'] #obtenemos el id del usuario del token
+        
+        user = Usuario.query.get(usuario_id) #buscamos al usuario
+        if not user:
+            return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
+            
+        #hasheamos y guardamos la nueva contraseña
+        user.contraseña = generate_password_hash(nueva_password)
+        db.session.commit() #guardamos los cambios
+        
+        return jsonify({"status": "success", "message": "Contraseña actualizada exitosamente"}), 200
+        
+    except Exception as e:
+        #captura errores como token expirado o firma invalida
+        return jsonify({"status": "error", "message": "El enlace es inválido o ha expirado"}), 401
+#----------------------------------------------------
 
+#--------------------------------------------------------------------------------------------------
+#------------ Endpoints del Modulo de Gestión de Activos (EQUIPOS) ----------------------
+
+#----------------------------------------------
+#endpoint para crear un equipo
 @app.route('/equipos', methods=['POST'])
 @jwt_required()
 def create_equipo():
-    usuario_id = get_jwt_identity()
-    usuario = Usuario.query.get(usuario_id)
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     if not usuario:
         return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
     
-    data = request.json
+    data = request.json #obtenemos los datos del equipo
     
     # Usuario Solicitante solo puede crear su propio equipo ("Alta Básica")
     # Administrador/Técnico pueden asignar a cualquier usuario
@@ -570,36 +606,42 @@ def delete_equipo(id):
         return jsonify({"status": "error", "message": str(e)}), 500
 #----------------------------------------------------
 
-#Prolog
+
+#-------------------------------------------------------------------------------------------------------
+#Endpoints para Modulo de Diagnostico con Sistema Experto
+
+#----------------------------------------------
+#endpoint para diagnosticar con Prolog
 @app.route('/diagnosticar', methods=['POST'])
 def diagnosticar():
     try:
-        data = request.json
+        data = request.json #recibe los datos del frontend
         if not data:
             return jsonify({"status": "error", "mensaje": "No se recibieron datos"}), 400
 
-        tipo = data.get('tipo')
-        sintoma = data.get('sintoma')
-        historial = data.get('historial', [])
+        tipo = data.get('tipo') #tipo de equipo
+        sintoma = data.get('sintoma') #sintoma (manifestación de falla) principal
+        historial = data.get('historial', []) #historial de preguntas y respuestas
 
-        # 1. Limpiar memoria antes de procesar
-        # Usamos la regla que definimos en reglas.pl
+        # 1. limpiamos la memoria antes de procesar
+        #usamos la regla que definimos en reglas.pl
         list(prolog.query("limpiar_memoria"))
 
-        # 2. Inyectar el historial
+        # 2. Inyectamos el historial
         for paso in historial:
-            pregunta = paso['p']
+            pregunta = paso['p'] #pregunta
             respuesta = paso['r'] # 'si' o 'no'
-            # Es vital envolver el valor en comillas simples para Prolog
+            #envolvemos el valor en comillas simples para Prolog
             prolog.assertz(f"respuesta('{pregunta}', {respuesta})")
 
-        # 3. Ejecutar la consulta maestra
-        query_str = f"siguiente_paso('{tipo}', '{sintoma}', Accion, Valor)"
-        results = list(prolog.query(query_str))
+        # 3. Ejecutamos la consulta principal
+        query_str = f"siguiente_paso('{tipo}', '{sintoma}', Accion, Valor)" #consulta principal
+        results = list(prolog.query(query_str)) #obtenemos los resultados
 
+        # 4. Procesamos la respuesta
         if results:
             res = results[0]
-            # PySWIP a veces devuelve bytes o objetos Atóm, los forzamos a string
+            #procesamos los datos a string
             return jsonify({
                 "status": "success",
                 "accion": str(res['Accion']),
@@ -614,24 +656,24 @@ def diagnosticar():
     except Exception as e:
         print(f"Error en el diagnóstico: {e}")
         return jsonify({"status": "error", "mensaje": str(e)}), 500
+#----------------------------------------------
 
-#----------------------------------------------------
-# Endpoints del Sistema Experto (hechos_se)
-
+#----------------------------------------------
+#endpoint para obtener los sintomas de la bd (bd extra)
 @app.route('/sintomas', methods=['GET'])
 def get_sintomas():
     try:
-        # Recibimos el tipo desde los parámetros de la URL: /api/sintomas?tipo=PC
+        #recibimos el tipo desde los parametros de la URL: /api/sintomas?tipo=PC
         tipo = request.args.get('tipo')
         
-        query = SintomaHecho.query
+        query = SintomaHecho.query #consulta a la tabla SintomaHecho
         
         if tipo:
-            # Hacemos un JOIN con la tabla de fallas (FallaHecho) para filtrar solo los síntomas
-            # que tengan al menos una falla registrada para ese tipo de equipo (PC o Laptop)
+            #hacemos un JOIN con la tabla de fallas (FallaHecho) para filtrar solo los síntomas
+            #que tengan al menos una falla registrada para ese tipo de equipo (PC o Laptop)
             query = query.join(FallaHecho).filter(FallaHecho.tipo_equipo == tipo).distinct()
         
-        sintomas = query.all()
+        sintomas = query.all() #obtenemos todos los sintomas
         
         return jsonify({
             "status": "success",
