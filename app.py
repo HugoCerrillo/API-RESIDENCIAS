@@ -218,10 +218,12 @@ def get_usuarios():
     }), 200
 #----------------------------------------------------
 
+
+
 #----------------------------------------------------
 #endpoint para obtener un usuario mediante su id
 @app.route('/usuarios/<int:id>', methods=['GET'])
-@admin_required #solo los administradores pueden acceder a este endpoint
+#@admin_required #solo los administradores pueden acceder a este endpoint
 def get_usuario(id):
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
