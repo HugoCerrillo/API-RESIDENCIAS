@@ -176,7 +176,7 @@ class Diagnostico(db.Model):
     
     id_evento = db.Column(db.Integer, db.ForeignKey('Evento.id_evento', ondelete='CASCADE'), primary_key=True)
     fecha_diagnostico = db.Column(db.DateTime, default=datetime.utcnow)
-    log_chatbot = db.Column(db.Text)
+    log_chatbot = db.Column(db.JSON)
     resultado_preeliminar = db.Column(db.Text)
     validacion_tecnico = db.Column(db.Text)
 
@@ -188,7 +188,7 @@ class Diagnostico(db.Model):
         return {
             "id_evento": self.id_evento,
             "fecha_diagnostico": self.fecha_diagnostico.isoformat() if self.fecha_diagnostico else None,
-            "log_chatbot": self.log_chatbot or "",
+            "log_chatbot": self.log_chatbot,
             "resultado_preeliminar": self.resultado_preeliminar or "",
             "validacion_tecnico": self.validacion_tecnico or ""
         }

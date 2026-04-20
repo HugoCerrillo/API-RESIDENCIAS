@@ -9,7 +9,7 @@ from flask_cors import CORS
 import pymysql
 from datetime import timedelta
 from functools import wraps  #para usar decoradores
-from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho
+from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho, Evento, Diagnostico, Mantenimiento, Alerta
 from pyswip import Prolog
 
 #---------------------------------------------------------
@@ -388,14 +388,14 @@ def create_equipo():
     
     data = request.json #obtenemos los datos del equipo
     
-    # Usuario Solicitante solo puede crear su propio equipo ("Alta Básica")
-    # Administrador/Técnico pueden asignar a cualquier usuario
+    #Usuario Solicitante solo puede crear su propio equipo ("Alta Básica")
+    #Administrador/Técnico pueden asignar a cualquier usuario
     id_propietario = usuario.id_usuario
     if usuario.rol in ['Administrador', 'Técnico'] and 'id_usuario' in data:
         id_propietario = data['id_usuario']
 
     try:
-        # 1. Crear el Equipo
+        #crear el Equipo 
         nuevo_equipo = Equipo(
             id_usuario=id_propietario,
             tipo_equipo=data.get('tipo_equipo'),
@@ -408,12 +408,12 @@ def create_equipo():
             fecha_adquisicion=data.get('fecha_adquisicion'),
             en_garantia=data.get('en_garantia', False)
         )
-        db.session.add(nuevo_equipo)
-        db.session.flush() # Para obtener el id_equipo antes del commit
+        db.session.add(nuevo_equipo) #agregamos el equipo
+        db.session.flush() #obtenemos el id_equipo antes del commit
 
-        # 2. Agregar Periféricos (si los técnicos/admins los envían)
+        #agregar Periféricos (si los técnicos/admins los mandan)
         if usuario.rol != 'Usuario Solicitante' and 'perifericos' in data:
-            for p in data['perifericos']:
+            for p in data['perifericos']: #recorremos los perifericos
                 nuevo_p = Periferico(
                     id_equipo=nuevo_equipo.id_equipo,
                     tipo=p.get('tipo'),
@@ -421,11 +421,11 @@ def create_equipo():
                     numero_serie=p.get('numero_serie'),
                     id_inventario_interno=p.get('id_inventario_interno')
                 )
-                db.session.add(nuevo_p)
+                db.session.add(nuevo_p) #agregamos el periferico
 
-        # 3. Agregar Especificación (Solo si no es Usuario Solicitante)
+        #agregar Especificación (Solo si no es Usuario Solicitante)
         if usuario.rol != 'Usuario Solicitante' and 'especificaciones' in data:
-            specs = data['especificaciones']
+            specs = data['especificaciones'] #obtenemos las especificaciones
             nueva_spec = Especificacion(
                 id_equipo=nuevo_equipo.id_equipo,
                 sistema_operativo=specs.get('sistema_operativo'),
@@ -436,9 +436,9 @@ def create_equipo():
                 almacenamiento_tipo=specs.get('almacenamiento_tipo'),
                 es_actual=True
             )
-            db.session.add(nueva_spec)
+            db.session.add(nueva_spec) #agregamos la especificación
 
-        db.session.commit()
+        db.session.commit() #guardamos los cambios
         return jsonify({
             "status": "success",
             "message": "Equipo registrado correctamente",
@@ -446,76 +446,85 @@ def create_equipo():
         }), 201
 
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback() #deshacemos los cambios si hay un error
         return jsonify({"status": "error", "message": str(e)}), 500
+#----------------------------------------------------
 
+#----------------------------------------------------
+#endpoint para obtener los equipos registrados
 @app.route('/equipos', methods=['GET'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
 def get_equipos():
-    usuario_id = get_jwt_identity()
-    usuario = Usuario.query.get(usuario_id)
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     
-    # Filtrado por rol
+    #filtrado por rol
     query = db.session.query(Equipo, Usuario.nombre.label('dueño')).join(Usuario, Equipo.id_usuario == Usuario.id_usuario)
     
-    if usuario.rol == 'Usuario Solicitante':
-        query = query.filter(Equipo.id_usuario == usuario.id_usuario)
+    if usuario.rol == 'Usuario Solicitante': #si el usuario es solicitante
+        query = query.filter(Equipo.id_usuario == usuario.id_usuario) #solo muestra sus equipos
     
-    resultados = query.all()
-    
-    lista_equipos = []
-    for eq, dueño in resultados:
-        d = eq.to_dict()
-        d['dueño'] = dueño
-        lista_equipos.append(d)
+    resultados = query.all() #obtenemos todos los equipos
+     
+    lista_equipos = [] #creamos una lista para guardar los equipos
+    for eq, dueño in resultados: #recorremos los equipos
+        d = eq.to_dict() #convertimos el equipo a diccionario
+        d['dueño'] = dueño #agregamos el dueño
+        lista_equipos.append(d) #agregamos el equipo a la lista
         
     return jsonify({
         "status": "success",
         "equipos": lista_equipos
     }), 200
+#----------------------------------------------------
 
+#----------------------------------------------------
+#endpoint para obtener los detalles de un equipo
 @app.route('/equipos/<int:id>', methods=['GET'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
 def get_equipo_detalle(id):
-    usuario_id = get_jwt_identity()
-    usuario = Usuario.query.get(usuario_id)
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     
-    equipo = Equipo.query.get(id)
+    equipo = Equipo.query.get(id) #obtenemos el equipo
     if not equipo:
         return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
         
-    # Seguridad: Usuario Solicitante solo ve sus propios equipos
+    #Usuario Solicitante solo ve sus propios equipos
     if usuario.rol == 'Usuario Solicitante' and equipo.id_usuario != usuario.id_usuario:
         return jsonify({"status": "error", "message": "Acceso denegado"}), 403
     
-    # Obtener especificación actual
+    #obtenemos la especificación actual
     spec_actual = Especificacion.query.filter_by(id_equipo=id, es_actual=True).first()
     
     return jsonify({
         "status": "success",
-        "equipo": equipo.to_dict(),
-        "perifericos": [p.to_dict() for p in equipo.perifericos],
-        "especificacion": spec_actual.to_dict() if spec_actual else None,
-        "dueño": equipo.propietario.nombre if hasattr(equipo, 'propietario') else "Desconocido"
+        "equipo": equipo.to_dict(), #convertimos el equipo a diccionario
+        "perifericos": [p.to_dict() for p in equipo.perifericos], #convertimos los perifericos a diccionario    
+        "especificacion": spec_actual.to_dict() if spec_actual else None, #convertimos la especificación a diccionario
+        "dueño": equipo.propietario.nombre if hasattr(equipo, 'propietario') else "Desconocido" #obtenemos el dueño
     }), 200
+#----------------------------------------------------
 
+#----------------------------------------------------
+#endpoint para actualizar un equipo
 @app.route('/equipos/<int:id>', methods=['PUT'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
 def update_equipo(id):
-    usuario_id = get_jwt_identity()
-    usuario = Usuario.query.get(usuario_id)
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     
-    if usuario.rol not in ['Administrador', 'Técnico']:
+    if usuario.rol not in ['Administrador', 'Técnico']: #si el usuario no es administrador o técnico
         return jsonify({"status": "error", "message": "No tienes permisos para editar equipos"}), 403
         
-    equipo = Equipo.query.get(id)
-    if not equipo:
+    equipo = Equipo.query.get(id) #obtenemos el equipo
+    if not equipo: #si el equipo no existe
         return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
         
-    data = request.json
+    data = request.json #obtenemos los datos del equipo
     
     try:
-        # 1. Actualizar datos básicos
+        # 1. Actualizar datos basicos
         if 'id_usuario' in data: equipo.id_usuario = data['id_usuario']        
         if 'marca' in data: equipo.marca = data['marca']
         if 'modelo' in data: equipo.modelo = data['modelo']
@@ -527,30 +536,30 @@ def update_equipo(id):
         if 'estado_operativo' in data: equipo.estado_operativo = data['estado_operativo']
         if 'en_garantia' in data: equipo.en_garantia = data['en_garantia']
 
-        # 2. Lógica de Versionado de Especificaciones
-        if 'especificaciones' in data:
-            new_specs_data = data['especificaciones']
+        # 2. Logica de Versionado de Especificaciones
+        if 'especificaciones' in data: #si hay especificaciones
+            new_specs_data = data['especificaciones'] #obtenemos las especificaciones
             
-            # Buscar la especificación actual
+            #buscar la especificacion actual
             current_spec = Especificacion.query.filter_by(id_equipo=id, es_actual=True).first()
             
-            # Solo crear nueva versión si el registro actual es diferente o si no existe
-            should_create_new = False
-            if not current_spec:
-                should_create_new = True
+            #solo crear nueva version si el registro actual es diferente o si no existe
+            should_create_new = False #variable para verificar si se debe crear una nueva version
+            if not current_spec: #si no existe la especificacion actual
+                should_create_new = True #se crea una nueva version
             else:
-                # Verificar si algo cambió (omitiendo id y metadatos)
+                #verificar si algo cambio (omitiendo id y metadatos)
                 fields_to_check = ['sistema_operativo', 'procesador', 'ram', 'tipo_ram', 'almacenamiento', 'almacenamiento_tipo']
-                for field in fields_to_check:
-                    if new_specs_data.get(field) != getattr(current_spec, field):
-                        should_create_new = True
+                for field in fields_to_check: #recorremos los campos
+                    if new_specs_data.get(field) != getattr(current_spec, field): #si algo cambio
+                        should_create_new = True #se crea una nueva version
                         break
             
-            if should_create_new:
-                if current_spec:
+            if should_create_new: #si se debe crear una nueva version
+                if current_spec: #si existe la especificacion actual
                     current_spec.es_actual = False # Versionamos la anterior
                 
-                # Creamos el nuevo registro
+                #creamos el nuevo registro
                 nueva_version = Especificacion(
                     id_equipo=id,
                     sistema_operativo=new_specs_data.get('sistema_operativo'),
@@ -561,13 +570,13 @@ def update_equipo(id):
                     almacenamiento_tipo=new_specs_data.get('almacenamiento_tipo'),
                     es_actual=True
                 )
-                db.session.add(nueva_version)
+                db.session.add(nueva_version) #agregamos la nueva version
 
-        if 'perifericos' in data:
-            # Borrar los periféricos actuales para reemplazarlos con la nueva lista
-            Periferico.query.filter_by(id_equipo=id).delete()
+        if 'perifericos' in data: #si hay perifericos
+            #borramos los perifericos actuales para reemplazarlos con la nueva lista
+            Periferico.query.filter_by(id_equipo=id).delete() #borramos los perifericos actuales
             
-            for p in data['perifericos']:
+            for p in data['perifericos']: #recorremos los perifericos
                 nuevo_p = Periferico(
                     id_equipo=id,
                     tipo=p.get('tipo'),
@@ -575,41 +584,45 @@ def update_equipo(id):
                     numero_serie=p.get('numero_serie'),
                     id_inventario_interno=p.get('id_inventario_interno')
                 )
-                db.session.add(nuevo_p)
+                db.session.add(nuevo_p) #agregamos el nuevo periferico
 
-        db.session.commit()
+        db.session.commit() #guardamos los cambios
         return jsonify({"status": "success", "message": "Equipo y especificaciones actualizados"}), 200
 
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback() #deshacemos los cambios con un rollback si hay un error
         return jsonify({"status": "error", "message": str(e)}), 500
+#----------------------------------------------------
 
+#----------------------------------------------------
+#endpoint para eliminar un equipo
 @app.route('/equipos/<int:id>', methods=['DELETE'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
+@admin_required #solo administradores
 def delete_equipo(id):
-    usuario_id = get_jwt_identity()
-    usuario = Usuario.query.get(usuario_id)
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     
-    if usuario.rol != 'Administrador':
+    if usuario.rol != 'Administrador': #si el usuario no es administrador
         return jsonify({"status": "error", "message": "Solo el administrador puede eliminar equipos"}), 403
         
-    equipo = Equipo.query.get(id)
-    if not equipo:
+    equipo = Equipo.query.get(id) #obtenemos el equipo
+    if not equipo: #si el equipo no existe
         return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
         
     try:
-        # El cascade configurado en models.py se encargará de Perifericos y Especificaciones
-        db.session.delete(equipo)
-        db.session.commit()
+        #el cascade configurado en models.py se encargará de Perifericos y Especificaciones
+        db.session.delete(equipo) #eliminamos el equipo
+        db.session.commit() #guardamos los cambios
         return jsonify({"status": "success", "message": "Equipo y todo su historial eliminados correctamente"}), 200
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback() #deshacemos los cambios con un rollback si hay un error
         return jsonify({"status": "error", "message": str(e)}), 500
 #----------------------------------------------------
 
 
 #-------------------------------------------------------------------------------------------------------
-#Endpoints para Modulo de Diagnostico con Sistema Experto
+#---------- Endpoints para Modulo de Diagnostico con Sistema Experto
 
 #----------------------------------------------
 #endpoint para diagnosticar con Prolog
@@ -662,6 +675,7 @@ def diagnosticar():
 #----------------------------------------------
 #endpoint para obtener los sintomas de la bd (bd extra)
 @app.route('/sintomas', methods=['GET'])
+@jwt_required() #solo usuarios autenticados
 def get_sintomas():
     try:
         #recibimos el tipo desde los parametros de la URL: /api/sintomas?tipo=PC
@@ -686,6 +700,429 @@ def get_sintomas():
             "message": f"Error al obtener síntomas: {str(e)}"
         }), 500
 #----------------------------------------------------
+
+#------------------------------------------------------------------------------
+#---- Endpoints para Modulo de Mantenimiento Preventivo/Correctivo-------------
+
+#----------------------------------------------
+@app.route('/eventos', methods=['POST'])
+@jwt_required() #requiere sesion iniciada
+def create_evento():
+    data = request.json #obtenemos los datos en json
+    id_equipo = data.get('id_equipo')
+    
+    try:
+        #1. Buscar el equipo para cambiar su estado
+        equipo = Equipo.query.get(id_equipo)
+        if not equipo:
+            return jsonify({"status": "error", "message": "El equipo especificado no existe"}), 404
+            
+        #2. Creamos el nuevo evento
+        nuevo_evento = Evento(
+            id_equipo=id_equipo, #equipo que se reporta
+            id_usuario=data.get('id_usuario'), #técnico asignado
+            falla_reportada=data.get('falla_reportada'), #falla reportada
+            estado_fisico=data.get('estado_fisico'), #estado fisico del equipo
+            estatus=data.get('estatus', 'Abierto'), #estatus del evento
+            validado=False #por defecto inicia en False
+        )
+        
+        #3. Automatización: Cambiamos el estado del equipo a 'En Mantenimiento'
+        equipo.estado_operativo = 'En Mantenimiento'
+        
+        db.session.add(nuevo_evento) #agregamos el nuevo evento a la base de datos
+        db.session.commit() #guardamos los cambios
+        
+        return jsonify({
+            "status": "success",
+            "message": "Evento registrado y equipo puesto en mantenimiento",
+            "evento": nuevo_evento.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#----------------------------------------------
+
+#----------------------------------------------
+#endpoint para visualizar todos los eventos registrados
+@app.route('/eventos', methods=['GET'])
+@jwt_required() #requiere sesion iniciada
+def get_eventos():
+    usuario_id = get_jwt_identity()
+    usuario = Usuario.query.get(usuario_id)
+    
+    #RESTRICCIÓN: El usuario solicitante no puede ver el listado de eventos
+    if usuario.rol == 'Usuario Solicitante':
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+        
+    try:
+        eventos = Evento.query.all() #traemos todos los eventos
+        return jsonify({
+            "status": "success",
+            "eventos": [e.to_dict() for e in eventos] #convertimos los eventos a diccionario
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#----------------------------------------------
+
+#----------------------------------------------
+#endpoint para actualizar un evento (con restricciones de rol)
+@app.route('/eventos/<int:id>', methods=['PUT'])
+@jwt_required() #requiere sesion iniciada
+def update_evento(id):
+    usuario_id = get_jwt_identity() #id del usuario en sesion
+    usuario = Usuario.query.get(usuario_id) #datos del usuario
+    
+    evento = Evento.query.get(id) #buscamos el evento
+    if not evento:
+        return jsonify({"status": "error", "message": "Evento no encontrado"}), 404
+        
+    data = request.json #datos a actualizar
+    
+    try:
+        #LOGICA PARA ADMINISTRADOR: puede modificar todo
+        if usuario.rol == 'Administrador':
+            if 'id_equipo' in data: evento.id_equipo = data['id_equipo']
+            if 'id_usuario' in data: evento.id_usuario = data['id_usuario']
+            if 'falla_reportada' in data: evento.falla_reportada = data['falla_reportada']
+            if 'estatus' in data: evento.estatus = data['estatus']
+            if 'estado_fisico' in data: evento.estado_fisico = data['estado_fisico']
+            
+            #Automatización al validar 
+            if 'validado' in data:
+                #Si se quiere validar (pasar a True)
+                if data['validado'] == True and evento.validado == False: #si el evento no está validado y se quiere validar
+                    evento.validado = True #se valida el evento
+                    
+                    #CONSULTA DE SEGURIDAD: hay otros eventos sin validar para este equipo?
+                    pendientes = Evento.query.filter(
+                        Evento.id_equipo == evento.id_equipo, 
+                        Evento.validado == False,
+                        Evento.id_evento != evento.id_evento #Excluimos el actual por seguridad
+                    ).count() #contamos los eventos sin validar
+                    
+                    if pendientes == 0: #si no hay eventos sin validar
+                        if evento.equipo: #si el evento tiene equipo
+                            evento.equipo.estado_operativo = 'Operativo' #el equipo se pone como operativo
+                    else:
+                        if evento.equipo: #si el evento tiene equipo
+                            evento.equipo.estado_operativo = 'En Mantenimiento' #el equipo se pone como en mantenimiento
+                else:
+                    evento.validado = data['validado'] #se actualiza el validado
+            
+        #LOGICA PARA TÉCNICO: solo puede validar
+        elif usuario.rol == 'Técnico':
+            #verificamos que NO intente cambiar otros atributos
+            campos_prohibidos = ['id_equipo', 'id_usuario', 'falla_reportada', 'estatus', 'estado_fisico'] #campos prohibidos para el técnico
+            for campo in campos_prohibidos: #recorremos los campos prohibidos
+                if campo in data: #si el campo está en los datos
+                    return jsonify({
+                        "status": "error", 
+                        "message": "Como técnico, no tienes permisos para modificar otros atributos del evento"
+                    }), 403
+            
+            #verificamos la condicion de validado (de False a True)
+            if 'validado' in data:
+                if evento.validado == False and data['validado'] == True: #si el evento no está validado y se quiere validar
+                    evento.validado = True #se valida el evento
+                    
+                    #CONSULTA DE SEGURIDAD: ¿Hay otros eventos sin validar para este equipo?
+                    pendientes = Evento.query.filter(
+                        Evento.id_equipo == evento.id_equipo, 
+                        Evento.validado == False,
+                        Evento.id_evento != evento.id_evento #excluimos el actual por seguridad
+                    ).count() #contamos los eventos sin validar
+                    
+                    if pendientes == 0: #si no hay eventos sin validar
+                        if evento.equipo: #si el evento tiene equipo
+                            evento.equipo.estado_operativo = 'Operativo' #el equipo se pone como operativo
+                    else:
+                        if evento.equipo: #si el evento tiene equipo
+                            evento.equipo.estado_operativo = 'En Mantenimiento' #el equipo se pone como en mantenimiento
+                else:
+                    return jsonify({"status": "error", "message": "Un técnico solo puede validar un evento (pasar de False a True)"}), 403
+            else:
+                return jsonify({"status": "error", "message": "No se enviaron cambios permitidos para el técnico"}), 400
+        
+        else:
+            return jsonify({"status": "error", "message": "No tienes permisos para actualizar eventos"}), 403
+
+        db.session.commit() #confirmamos la transaccion
+        return jsonify({
+            "status": "success",
+            "message": "Evento actualizado correctamente",
+            "evento": evento.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+#------------------------------------------------------------------------------
+
+#----------------------------------------------
+#endpoint para crear un diagnóstico nuevo
+@app.route('/diagnosticos', methods=['POST'])
+@jwt_required() #requiere sesion iniciada
+def create_diagnostico():
+    usuario_id = get_jwt_identity()
+    usuario = Usuario.query.get(usuario_id)
+    
+    #RESTRICCIÓN: El usuario solicitante no puede crear diagnósticos
+    if usuario.rol == 'Usuario Solicitante':
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+        
+    data = request.json #obtenemos los datos en json
+    id_evento = data.get('id_evento') #obtenemos el id del evento
+    
+    if not id_evento:
+        return jsonify({"status": "error", "message": "id_evento es requerido"}), 400
+        
+    try:
+        #1. Verificar que el evento exista
+        evento = Evento.query.get(id_evento) #obtenemos el evento
+        if not evento:
+            return jsonify({"status": "error", "message": "El evento no existe"}), 404
+            
+        #2. Verificar que no exista ya un diagnóstico para este evento (Relación 1:1)
+        existe = Diagnostico.query.get(id_evento) #verificamos si ya existe un diagnóstico para este evento
+        if existe:
+            return jsonify({
+                "status": "error", 
+                "message": "Ya existe un diagnóstico registrado para este evento. Usa PUT para editarlo."
+            }), 400
+            
+        #3. Crear el diagnóstico
+        nuevo_diagnostico = Diagnostico(
+            id_evento=id_evento,
+            log_chatbot=data.get('log_chatbot'),
+            resultado_preeliminar=data.get('resultado_preeliminar'),
+            validacion_tecnico=data.get('validacion_tecnico')
+        )
+        
+        db.session.add(nuevo_diagnostico) #agregamos el nuevo diagnostico a la base de datos
+        db.session.commit() #confirmamos la transaccion
+        
+        return jsonify({
+            "status": "success",
+            "message": "Diagnóstico registrado correctamente",
+            "diagnostico": nuevo_diagnostico.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#----------------------------------------------
+
+#----------------------------------------------
+#endpoint para visualizar los diagnosticos registrados
+@app.route('/diagnosticos', methods=['GET'])
+@jwt_required() #requiere sesion iniciada
+def get_diagnosticos():
+    usuario_id = get_jwt_identity()
+    usuario = Usuario.query.get(usuario_id)
+    
+    #RESTRICCIÓN: El usuario solicitante no puede ver el listado de diagnosticos
+    if usuario.rol == 'Usuario Solicitante':
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+        
+    try:
+        diagnosticos = Diagnostico.query.all() #traemos todos los diagnosticos
+        return jsonify({
+            "status": "success",
+            "diagnosticos": [d.to_dict() for d in diagnosticos] #convertimos los diagnosticos a diccionario
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#----------------------------------------------
+
+#----------------------------------------------
+#endpoint para editar un diagnostico (solo técnicos y administradores)
+@app.route('/diagnosticos/<int:id_evento>', methods=['PUT'])
+@jwt_required() #requiere sesion iniciada
+def update_diagnostico(id_evento):
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #RESTRICCIÓN: Solo Admins o Técnicos pueden editar el diagnóstico
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({
+            "status": "error", 
+            "message": "No tienes permisos para editar diagnósticos técnicos"
+        }), 403
+    
+    #1. Verificar que el evento asociado exista y su estado de validación
+    evento = Evento.query.get(id_evento)
+    if not evento:
+        return jsonify({"status": "error", "message": "El evento asociado no existe"}), 404
+        
+    #2. Si el evento ya está VALIDADO (True), solo el Admin puede seguir editando
+    if evento.validado == True and usuario.rol != 'Administrador':
+        return jsonify({
+            "status": "error", 
+            "message": "Este evento ya ha sido validado. Solo un administrador puede realizar cambios en el diagnóstico."
+        }), 403
+        
+    diagnostico = Diagnostico.query.get(id_evento)
+    if not diagnostico:
+        return jsonify({"status": "error", "message": "Diagnóstico no encontrado"}), 404
+        
+    data = request.json #obtenemos los datos en json
+    
+    try:
+        if 'log_chatbot' in data: diagnostico.log_chatbot = data['log_chatbot'] #actualizamos el log del chatbot
+        if 'resultado_preeliminar' in data: diagnostico.resultado_preeliminar = data['resultado_preeliminar'] #actualizamos el resultado preliminar
+        if 'validacion_tecnico' in data: diagnostico.validacion_tecnico = data['validacion_tecnico'] #actualizamos la validacion tecnica
+        
+        db.session.commit() #confirmamos la transaccion
+        return jsonify({
+            "status": "success",
+            "message": "Diagnóstico actualizado correctamente",
+            "diagnostico": diagnostico.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#------------------------------------------------------------------------------
+
+#----------------------------------------------
+#endpoint para crear un mantenimiento (Solo Técnicos)
+@app.route('/mantenimientos', methods=['POST'])
+@jwt_required()
+def create_mantenimiento():
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #RESTRICCIÓN: Solo el Técnico puede crear el mantenimiento
+    if usuario.rol != 'Técnico':
+        return jsonify({
+            "status": "error", 
+            "message": "Solo el técnico asignado puede registrar el mantenimiento final"
+        }), 403
+        
+    data = request.json #obtenemos los datos en json
+    id_evento = data.get('id_evento') #obtenemos el id del evento
+    
+    if not id_evento:
+        return jsonify({"status": "error", "message": "id_evento es requerido"}), 400
+        
+    try:
+        #1. Verificar existencia del evento
+        evento = Evento.query.get(id_evento)
+        if not evento:
+            return jsonify({"status": "error", "message": "El evento no existe"}), 404
+            
+        #2. Verificar duplicados
+        existe = Mantenimiento.query.get(id_evento) #verificamos si ya existe un mantenimiento para este evento
+        if existe:
+            return jsonify({
+                "status": "error", 
+                "message": "Ya existe un registro de mantenimiento para este evento"
+            }), 400
+            
+        #3. Crear mantenimiento
+        nuevo_mantenimiento = Mantenimiento(
+            id_evento=id_evento,
+            tipo=data.get('tipo'), # 'Preventivo' o 'Correctivo'
+            fecha_entrega=data.get('fecha_entrega'),
+            descripcion_trabajo=data.get('descripcion_trabajo'),
+            piezas_reemplazadas=data.get('piezas_reemplazadas')
+        )
+        
+        db.session.add(nuevo_mantenimiento) #agregamos el nuevo mantenimiento a la base de datos
+        db.session.commit() #confirmamos la transaccion
+        
+        return jsonify({
+            "status": "success",
+            "message": "Mantenimiento registrado con éxito",
+            "mantenimiento": nuevo_mantenimiento.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#----------------------------------------------
+
+#----------------------------------------------
+#endpoint para visualizar mantenimientos (Admin y Técnico)
+@app.route('/mantenimientos', methods=['GET'])
+@jwt_required()
+def get_mantenimientos():
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #RESTRICCIÓN: Usuario Solicitante no puede ver esta lista
+    if usuario.rol == 'Usuario Solicitante':
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+        
+    try:
+        mantenimientos = Mantenimiento.query.all() #traemos todos los mantenimientos
+        return jsonify({
+            "status": "success",
+            "mantenimientos": [m.to_dict() for m in mantenimientos] #convertimos los mantenimientos a diccionario
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#----------------------------------------------
+
+#----------------------------------------------
+#endpoint para editar mantenimientos (Administrador y Técnico bajo condición)
+@app.route('/mantenimientos/<int:id_evento>', methods=['PUT'])
+@jwt_required()
+def update_mantenimiento(id_evento):
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #1. Verificar permisos basicos de rol
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos para editar mantenimientos"}), 403
+        
+    #2. Verificar que el evento asociado exista y su estado de validacion
+    evento = Evento.query.get(id_evento) #verificamos si el evento existe
+    if not evento:
+        return jsonify({"status": "error", "message": "El evento asociado no existe"}), 404
+        
+    #3. Restriccion dinamica: Si esta VALIDADO, solo Admin puede editar
+    if evento.validado == True and usuario.rol != 'Administrador':
+        return jsonify({
+            "status": "error", 
+            "message": "Este evento ya ha sido validado. Solo un administrador puede realizar cambios en el mantenimiento."
+        }), 403
+        
+    mantenimiento = Mantenimiento.query.get(id_evento) #obtenemos el mantenimiento
+    if not mantenimiento:
+        return jsonify({"status": "error", "message": "Mantenimiento no encontrado"}), 404
+        
+    data = request.json #obtenemos los datos en json
+    
+    try:
+        if 'tipo' in data: mantenimiento.tipo = data['tipo']
+        if 'fecha_entrega' in data: mantenimiento.fecha_entrega = data['fecha_entrega']
+        if 'descripcion_trabajo' in data: mantenimiento.descripcion_trabajo = data['descripcion_trabajo']
+        if 'piezas_reemplazadas' in data: mantenimiento.piezas_reemplazadas = data['piezas_reemplazadas']
+        
+        db.session.commit() #confirmamos la transaccion
+        return jsonify({
+            "status": "success",
+            "message": "Mantenimiento actualizado por el administrador",
+            "mantenimiento": mantenimiento.to_dict() #convertimos el mantenimiento a diccionario
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#------------------------------------------------------------------------------
 
 if __name__ == '__main__':    
     app.run(host='0.0.0.0', port=5000, debug=True)
