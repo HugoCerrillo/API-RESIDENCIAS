@@ -516,6 +516,7 @@ def update_equipo(id):
     
     try:
         # 1. Actualizar datos básicos
+        if 'id_usuario' in data: equipo.id_usuario = data['id_usuario']        
         if 'marca' in data: equipo.marca = data['marca']
         if 'modelo' in data: equipo.modelo = data['modelo']
         if 'tipo_equipo' in data: equipo.tipo_equipo = data['tipo_equipo']
