@@ -900,10 +900,6 @@ def update_evento(id):
 def create_diagnostico():
     usuario_id = get_jwt_identity()
     usuario = Usuario.query.get(usuario_id)
-    
-    #RESTRICCIÓN: El usuario solicitante no puede crear diagnósticos
-    if usuario.rol == 'Usuario Solicitante':
-        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
         
     data = request.json #obtenemos los datos en json
     id_evento = data.get('id_evento') #obtenemos el id del evento
