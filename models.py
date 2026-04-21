@@ -150,7 +150,6 @@ class Evento(db.Model):
     id_equipo = db.Column(db.Integer, db.ForeignKey('Equipo.id_equipo', ondelete='CASCADE'), nullable=False)
     id_usuario = db.Column(db.Integer, db.ForeignKey('Usuario.id_usuario', ondelete='CASCADE'), nullable=False)
     falla_reportada = db.Column(db.Text)
-    estatus = db.Column(db.String(30), default='Abierto')
     estado_fisico = db.Column(db.Text)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     validado = db.Column(db.Boolean, default=False)
@@ -162,7 +161,6 @@ class Evento(db.Model):
             "id_equipo": self.id_equipo,
             "id_usuario": self.id_usuario,
             "falla_reportada": self.falla_reportada or "",
-            "estatus": self.estatus,
             "estado_fisico": self.estado_fisico or "",
             "fecha_creacion": self.fecha_creacion.isoformat() if self.fecha_creacion else None,
             "validado": self.validado

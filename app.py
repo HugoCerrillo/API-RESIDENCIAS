@@ -8,6 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import pymysql
 from datetime import timedelta
+from sqlalchemy import func
 from functools import wraps  #para usar decoradores
 from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho, Evento, Diagnostico, Mantenimiento, Alerta
 from pyswip import Prolog
@@ -708,26 +709,55 @@ def get_sintomas():
 @app.route('/eventos', methods=['POST'])
 @jwt_required() #requiere sesion iniciada
 def create_evento():
+    usuario_id_creador = get_jwt_identity() #id del usuario que crea el evento
+    usuario_creador = Usuario.query.get(usuario_id_creador) #obtenemos el usuario
+    
     data = request.json #obtenemos los datos en json
     id_equipo = data.get('id_equipo')
     
+    #id final del técnico que se asignará al evento
+    id_tecnico_asignado = None
+    
     try:
-        #1. Buscar el equipo para cambiar su estado
+        #1. DETERMINAR ASIGNACION DE TECNICO
+        if usuario_creador.rol == 'Técnico':
+            #si el creador es tecnico, se lo asigna a sí mismo
+            id_tecnico_asignado = usuario_id_creador
+        
+        elif usuario_creador.rol == 'Usuario Solicitante':
+            #si es solicitante, buscamos al técnico con menos eventos abiertos (validado=False)
+            tecnico_menos_ocupado = db.session.query(
+                Usuario
+            ).outerjoin(Evento, (Usuario.id_usuario == Evento.id_usuario) & (Evento.validado == False))\
+             .filter(Usuario.rol == 'Técnico')\
+             .group_by(Usuario.id_usuario)\
+             .order_by(func.count(Evento.id_evento).asc(), Usuario.id_usuario.asc())\
+             .first()
+            
+            if not tecnico_menos_ocupado:
+                return jsonify({"status": "error", "message": "No hay técnicos registrados en el sistema para asignar el evento"}), 500
+            
+            id_tecnico_asignado = tecnico_menos_ocupado.id_usuario #obtenemos el id del técnico
+        
+        else:
+            #Administradores u otros roles no generan eventos
+            return jsonify({"status": "error", "message": "Tu rol no tiene permisos para generar eventos"}), 403
+
+        #2. Buscar el equipo para cambiar su estado
         equipo = Equipo.query.get(id_equipo)
         if not equipo:
             return jsonify({"status": "error", "message": "El equipo especificado no existe"}), 404
             
-        #2. Creamos el nuevo evento
+        #3. Creamos el nuevo evento
         nuevo_evento = Evento(
             id_equipo=id_equipo, #equipo que se reporta
-            id_usuario=data.get('id_usuario'), #técnico asignado
+            id_usuario=id_tecnico_asignado, #técnico asignado automáticamente
             falla_reportada=data.get('falla_reportada'), #falla reportada
             estado_fisico=data.get('estado_fisico'), #estado fisico del equipo
-            estatus=data.get('estatus', 'Abierto'), #estatus del evento
             validado=False #por defecto inicia en False
         )
         
-        #3. Automatización: Cambiamos el estado del equipo a 'En Mantenimiento'
+        #4. Automatización: Cambiamos el estado del equipo a 'En Mantenimiento'
         equipo.estado_operativo = 'En Mantenimiento'
         
         db.session.add(nuevo_evento) #agregamos el nuevo evento a la base de datos
@@ -735,7 +765,7 @@ def create_evento():
         
         return jsonify({
             "status": "success",
-            "message": "Evento registrado y equipo puesto en mantenimiento",
+            "message": f"Evento registrado y asignado al técnico ID: {id_tecnico_asignado}",
             "evento": nuevo_evento.to_dict()
         }), 201
         
@@ -788,7 +818,6 @@ def update_evento(id):
             if 'id_equipo' in data: evento.id_equipo = data['id_equipo']
             if 'id_usuario' in data: evento.id_usuario = data['id_usuario']
             if 'falla_reportada' in data: evento.falla_reportada = data['falla_reportada']
-            if 'estatus' in data: evento.estatus = data['estatus']
             if 'estado_fisico' in data: evento.estado_fisico = data['estado_fisico']
             
             #Automatización al validar 
@@ -816,7 +845,7 @@ def update_evento(id):
         #LOGICA PARA TÉCNICO: solo puede validar
         elif usuario.rol == 'Técnico':
             #verificamos que NO intente cambiar otros atributos
-            campos_prohibidos = ['id_equipo', 'id_usuario', 'falla_reportada', 'estatus', 'estado_fisico'] #campos prohibidos para el técnico
+            campos_prohibidos = ['id_equipo', 'id_usuario', 'falla_reportada', 'estado_fisico']
             for campo in campos_prohibidos: #recorremos los campos prohibidos
                 if campo in data: #si el campo está en los datos
                     return jsonify({
