@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token
 import smtplib
@@ -20,6 +20,7 @@ prolog = Prolog() #inicializamos el motor de prolog
 #definimos la ruta de las reglas de prolog
 base_path = os.path.dirname(__file__) #obtenemos la ruta del directorio actual
 path_reglas = os.path.join(base_path, "motor_prolog", "reglas.pl").replace("\\", "/") #obtenemos la ruta de las reglas
+path_hechos = os.path.join(base_path, "motor_prolog", "hechos.pl").replace("\\", "/") #ruta del archivo de hechos
 prolog.consult(path_reglas) #cargamos las reglas en el motor de prolog
 
 #---------------------------------------------------------
@@ -1149,6 +1150,49 @@ def update_mantenimiento(id_evento):
 
 #------------------------------------------------------------------------------
 
+#---- UTILIDADES PARA SINCRONIZACIÓN CON PROLOG ------------------------------
+#------------------------------------------------------------------------------
+
+def sincronizar_hechos_prolog():
+    """Consulta la base de datos y regenera el archivo hechos.pl para Prolog"""
+    try:
+        fallas = FallaHecho.query.all()
+        
+        lines = [
+            "% --- hechos.pl: GENERADO AUTOMATICAMENTE DESDE LA BASE DE DATOS ---",
+            "% No editar este archivo manualmente.",
+            f"% Ultima actualizacion: {timedelta(hours=-6) + datetime.utcnow()}", 
+            "\n"
+        ]
+        
+        for f in fallas:
+            # Escapar comillas simples duplicándolas para Prolog
+            diag = f.diagnostico.replace("'", "''")
+            rec = f.recomendacion.replace("'", "''")
+            pregunta = f.pregunta_pista.replace("'", "''")
+            
+            # Generar líneas de hechos
+            lines.append(f"falla_info({f.id}, '{f.tipo_equipo}', '{diag}', '{rec}').")
+            # f.sintoma.clave generalmente no lleva comillas si es un atomo, 
+            # pero por seguridad la ponemos o validamos el formato
+            sintoma_clave = f.sintoma.clave if f.sintoma else "sintoma_desconocido"
+            lines.append(f"condicion({f.id}, {sintoma_clave}, '{pregunta}').")
+        
+        # Escribir el archivo
+        with open(path_hechos, "w", encoding="utf-8") as file:
+            file.write("\n".join(lines))
+            
+        # Recargar el motor de Prolog para que reconozca los nuevos hechos
+        prolog.consult(path_reglas)
+        print(">>> Sincronización con Prolog exitosa.")
+        return True
+    except Exception as e:
+        print(f">>> Error sincronizando con Prolog: {str(e)}")
+        return False
+
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 #---- Endpoints para Gestión de Base de Datos de Hechos (Sistema Experto) -----
 
 #------------------------------------------------------------------------------
@@ -1264,9 +1308,12 @@ def create_falla_hecho():
         db.session.add(nueva_falla) #agregamos la nueva falla
         db.session.commit() #confirmamos la transaccion
         
+        # Sincronizamos con el archivo físico de Prolog
+        sincronizar_hechos_prolog()
+        
         return jsonify({
             "status": "success",
-            "message": "Nueva falla/regla de diagnóstico registrada correctamente",
+            "message": "Nueva falla/regla de diagnóstico registrada correctamente y sincronizada con Prolog",
             "falla": nueva_falla.to_dict()
         }), 201
         
@@ -1275,5 +1322,34 @@ def create_falla_hecho():
         return jsonify({"status": "error", "message": str(e)}), 500
 #------------------------------------------------------------------------------
 
+# Endpoint para descargar el archivo hechos.pl (Para presentaciones/backup)
+@app.route('/exportar_hechos', methods=['GET'])
+@jwt_required()
+def exportar_hechos():
+    usuario_id = get_jwt_identity()
+    usuario = Usuario.query.get(usuario_id)
+    
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos para descargar la base de conocimientos"}), 403
+        
+    # Forzamos una sincronización antes de descargar para tener lo último
+    sincronizar_hechos_prolog()
+    
+    try:
+        return send_file(
+            path_hechos,
+            as_attachment=True,
+            download_name='hechos.pl',
+            mimetype='text/plain'
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error al descargar: {str(e)}"}), 500
+
+#------------------------------------------------------------------------------
+
 if __name__ == '__main__':    
+    # Sincronizamos hechos al arrancar (util para deploys de AWS EC2)
+    with app.app_context():
+        sincronizar_hechos_prolog()
+        
     app.run(host='0.0.0.0', port=5000, debug=True)
