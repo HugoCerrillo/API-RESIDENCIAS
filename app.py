@@ -7,7 +7,7 @@ from email.mime.text import MIMEText
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import pymysql
-from datetime import timedelta
+from datetime import timedelta, datetime
 from sqlalchemy import func
 from functools import wraps  #para usar decoradores
 from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho, Evento, Diagnostico, Mantenimiento, Alerta
@@ -1347,9 +1347,12 @@ def exportar_hechos():
 
 #------------------------------------------------------------------------------
 
-if __name__ == '__main__':    
-    # Sincronizamos hechos al arrancar (util para deploys de AWS EC2)
-    with app.app_context():
+# Sincronizamos hechos al arrancar (util para deploys de AWS EC2 y servidores WSGI como Gunicorn)
+with app.app_context():
+    try:
         sincronizar_hechos_prolog()
-        
+    except Exception as e:
+        print(f"Error en sincronización inicial: {e}")
+
+if __name__ == '__main__':    
     app.run(host='0.0.0.0', port=5000, debug=True)
