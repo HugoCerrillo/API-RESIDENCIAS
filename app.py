@@ -1149,5 +1149,131 @@ def update_mantenimiento(id_evento):
 
 #------------------------------------------------------------------------------
 
+#---- Endpoints para Gestión de Base de Datos de Hechos (Sistema Experto) -----
+
+#------------------------------------------------------------------------------
+#endpoint para registrar nuevas categorías
+@app.route('/categorias_hechos', methods=['POST'])
+@jwt_required()
+def create_categoria_hecho():
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #solo los técnicos pueden agregar hechos
+    if usuario.rol != 'Técnico':
+        return jsonify({"status": "error", "message": "Solo los técnicos tienen permisos para alimentar la base de conocimientos"}), 403
+        
+    data = request.json #obtenemos los datos en json
+    nombre = data.get('nombre') #obtenemos el nombre de la categoría
+    
+    if not nombre:
+        return jsonify({"status": "error", "message": "El nombre de la categoría es requerido"}), 400
+        
+    try:
+        nueva_cat = CategoriaHecho(nombre=nombre) #creamos la nueva categoría
+        db.session.add(nueva_cat) #agregamos la nueva categoría
+        db.session.commit() #confirmamos la transaccion
+        return jsonify({
+            "status": "success",
+            "message": "Categoría de diagnóstico registrada correctamente",
+            "categoria": nueva_cat.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": "Error al registrar categoría (posible nombre duplicado)"}), 500
+#------------------------------------------------------------------------------
+
+#endpoint para registrar nuevos síntomas iniciales
+@app.route('/sintomas_hechos', methods=['POST'])
+@jwt_required()
+def create_sintoma_hecho():
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #solo los técnicos pueden agregar hechos
+    if usuario.rol != 'Técnico':
+        return jsonify({"status": "error", "message": "Solo los técnicos tienen permisos para alimentar la base de conocimientos"}), 403
+        
+    data = request.json #obtenemos los datos en json
+    clave = data.get('clave') #obtenemos la clave del síntoma
+    descripcion = data.get('descripcion')
+    
+    if not clave or not descripcion:
+        return jsonify({"status": "error", "message": "Clave y descripción son requeridas"}), 400
+        
+    try:
+        nuevo_sintoma = SintomaHecho(clave=clave, descripcion=descripcion)
+        db.session.add(nuevo_sintoma)
+        db.session.commit()
+        return jsonify({
+            "status": "success",
+            "message": "Síntoma inicial registrado correctamente",
+            "sintoma": nuevo_sintoma.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Error al registrar síntoma (posible clave duplicada)"}), 500
+
+#------------------------------------------------------------------------------
+
+#endpoint para registrar nuevas fallas
+@app.route('/fallas_hechos', methods=['POST'])
+@jwt_required()
+def create_falla_hecho():
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
+    
+    #solo los técnicos pueden agregar hechos
+    if usuario.rol != 'Técnico':
+        return jsonify({"status": "error", "message": "Solo los técnicos tienen permisos para alimentar la base de conocimientos"}), 403
+        
+    data = request.json #obtenemos los datos en json
+    tipo_equipo = data.get('tipo_equipo') #obtenemos el tipo de equipo
+    sintoma_id = data.get('sintoma_id') #obtenemos el id del sintoma
+    categoria_id = data.get('categoria_id') #obtenemos el id de la categoria
+    pregunta_pista = data.get('pregunta_pista') #obtenemos la pregunta pista
+    diagnostico = data.get('diagnostico') #obtenemos el diagnostico
+    recomendacion = data.get('recomendacion') #obtenemos la recomendacion
+    
+    #verificamos que todos los campos sean obligatorios
+    if not all([tipo_equipo, sintoma_id, categoria_id, pregunta_pista, diagnostico, recomendacion]):
+        return jsonify({"status": "error", "message": "Todos los campos son obligatorios para registrar una falla"}), 400
+
+    #verificamos que el tipo de equipo sea correcto
+    if tipo_equipo not in ['PC', 'Laptop']:
+        return jsonify({"status": "error", "message": "El tipo_equipo debe ser 'PC' o 'Laptop'"}), 400
+
+    try:
+        #verificamos que existan la categoría y el síntoma
+        cat_existe = CategoriaHecho.query.get(categoria_id)
+        sin_existe = SintomaHecho.query.get(sintoma_id)
+        
+        #si no existen, retornamos error
+        if not cat_existe or not sin_existe:
+            return jsonify({"status": "error", "message": "La categoría o el síntoma especificado no existen"}), 404
+
+        nueva_falla = FallaHecho(
+            tipo_equipo=tipo_equipo,
+            sintoma_id=sintoma_id,
+            categoria_id=categoria_id,
+            pregunta_pista=pregunta_pista,
+            diagnostico=diagnostico,
+            recomendacion=recomendacion
+        ) #creamos la nueva falla
+        
+        db.session.add(nueva_falla) #agregamos la nueva falla
+        db.session.commit() #confirmamos la transaccion
+        
+        return jsonify({
+            "status": "success",
+            "message": "Nueva falla/regla de diagnóstico registrada correctamente",
+            "falla": nueva_falla.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+#------------------------------------------------------------------------------
+
 if __name__ == '__main__':    
     app.run(host='0.0.0.0', port=5000, debug=True)
