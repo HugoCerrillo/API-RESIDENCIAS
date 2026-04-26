@@ -1289,10 +1289,23 @@ def export_expediente_pdf(id):
             nombre_tec = f"{tec.nombre} {tec.apellido_paterno}"
             tipo = mant.tipo if mant else "Evento/Diag"
             
-            pdf.cell(25, 8, fecha, 1, 0, 'C')
-            pdf.cell(40, 8, nombre_tec[:22], 1, 0, 'C')
-            pdf.cell(30, 8, tipo, 1, 0, 'C')
-            pdf.multi_cell(95, 8, desc, 1, 'L')
+            # --- MEJORA DE DISEÑO: ALTURA DINAMICA ---
+            # 1. Calculamos cuantas lineas ocupara la descripcion (ancho 95)
+            # Usamos split_only=True para obtener la lista de lineas sin dibujarlas aun
+            lineas_desc = pdf.multi_cell(95, 6, desc, split_only=True)
+            altura_fila = len(lineas_desc) * 6 # 6 es el interlineado
+            if altura_fila < 8: altura_fila = 8 # Altura minima por fila
+            
+            # 2. Dibujamos las primeras 3 celdas con la altura total calculada
+            # El parametro 0 al final indica que no salte de linea aun
+            pdf.cell(25, altura_fila, fecha, 1, 0, 'C')
+            pdf.cell(40, altura_fila, nombre_tec[:22], 1, 0, 'C')
+            pdf.cell(30, altura_fila, tipo, 1, 0, 'C')
+            
+            # 3. Dibujamos la multicelda al final
+            # El interlineado aqui debe ser 6 para que coincida con nuestro calculo
+            pdf.multi_cell(95, 6, desc, 1, 'L')
+            # ------------------------------------------
 
         # 3. Retornar el PDF
         pdf_bytes = pdf.output()
