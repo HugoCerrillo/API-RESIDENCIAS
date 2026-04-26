@@ -1206,6 +1206,7 @@ class PDF_Expediente(FPDF):
         # Paginación (Derecha)
         self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
 
+#
 @app.route('/equipos/<int:id>/expediente_pdf', methods=['GET'])
 @jwt_required()
 def export_expediente_pdf(id):
