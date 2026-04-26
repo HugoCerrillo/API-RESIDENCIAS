@@ -1303,7 +1303,7 @@ def export_expediente_pdf(id):
             buffer,
             mimetype='application/pdf',
             as_attachment=True,
-            download_name=f'Expediente_ID_{equipo.id}.pdf'
+            download_name=f'Expediente_ID_{equipo.id_equipo}.pdf'
         )
 
     except Exception as e:
