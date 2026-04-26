@@ -1176,10 +1176,10 @@ class PDF_Expediente(FPDF):
 
         self.ln(35)
         # 2. Título del Reporte
-        self.set_font('Arial', 'B', 16)
+        self.set_font('Helvetica', 'B', 16)
         self.set_text_color(33, 37, 41) # Gris oscuro
         self.cell(0, 10, 'EXPEDIENTE TECNICO DE EQUIPO', 0, 1, 'C')
-        self.set_font('Arial', '', 10)
+        self.set_font('Helvetica', '', 10)
         self.cell(0, 5, 'Sistema Gestor de Mantenimiento ExperTrack', 0, 1, 'C')
         self.ln(10)
         
@@ -1191,7 +1191,7 @@ class PDF_Expediente(FPDF):
     def footer(self):
         # Posición a 1.5 cm del final
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
+        self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
         
         # Fecha ACTUAL con desfase de -6 horas (México)
@@ -1211,14 +1211,11 @@ class PDF_Expediente(FPDF):
 @jwt_required()
 def export_expediente_pdf(id):
     try:
-        # 1. Obtener datos del equipo e historial
+        # 1. Obtener datos
         equipo = Equipo.query.get(id)
         if not equipo:
             return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
-            
         spec = Especificacion.query.filter_by(id_equipo=id, es_actual=True).first()
-        
-        # Consultar eventos con su mantenimiento y técnico
         historial = db.session.query(Evento, Usuario, Mantenimiento)\
             .join(Usuario, Evento.id_usuario == Usuario.id_usuario)\
             .outerjoin(Mantenimiento, Evento.id_evento == Mantenimiento.id_evento)\
@@ -1226,45 +1223,40 @@ def export_expediente_pdf(id):
             .order_by(Evento.fecha_creacion.desc())\
             .all()
 
-        # 2. Crear documento PDF
+        # 2. Diseñar PDF
         pdf = PDF_Expediente()
         pdf.alias_nb_pages()
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=20)
 
-        # --- SECCIÓN: INFORMACIÓN DEL EQUIPO ---
-        pdf.set_font('Arial', 'B', 12)
+        # --- SECCION: IDENTIFICACION DEL EQUIPO ---
+        pdf.set_font('Helvetica', 'B', 12)
         pdf.set_fill_color(240, 240, 240)
-        pdf.cell(0, 8, '  IDENTIFICACIÓN DEL EQUIPO', 0, 1, 'L', fill=True)
+        pdf.cell(0, 8, '  IDENTIFICACION DEL EQUIPO', 0, 1, 'L', fill=True)
         pdf.ln(2)
         
-        pdf.set_font('Arial', '', 10)
+        pdf.set_font('Helvetica', '', 10)
         col1, col2 = 40, 60
         
         datos_equipo = [
-            ('Código Inventario:', equipo.codigo_inventario or "N/A", 'Marca:', equipo.marca or "N/A"),
+            ('Codigo Inventario:', equipo.codigo_inventario or "N/A", 'Marca:', equipo.marca or "N/A"),
             ('No. de Serie:', equipo.numero_serie or "N/A", 'Modelo:', equipo.modelo or "N/A"),
-            ('Tipo de Equipo:', equipo.tipo_equipo or "N/A", 'Área:', equipo.area or "N/A"),
-            ('Ubicación:', equipo.ubicacion or "N/A", 'Estatus:', equipo.estado_operativo or "N/A")
+            ('Tipo de Equipo:', equipo.tipo_equipo or "N/A", 'Area:', equipo.area or "N/A"),
+            ('Ubicacion:', equipo.ubicacion or "N/A", 'Estatus:', equipo.estado_operativo or "N/A")
         ]
         
         for d in datos_equipo:
-            pdf.set_font('Arial', 'B', 10)
-            pdf.cell(col1, 7, d[0], 0)
-            pdf.set_font('Arial', '', 10)
-            pdf.cell(col2, 7, d[1], 0)
-            pdf.set_font('Arial', 'B', 10)
-            pdf.cell(col1, 7, d[2], 0)
-            pdf.set_font('Arial', '', 10)
-            pdf.cell(col2, 7, d[3], 0)
+            pdf.set_font('Helvetica', 'B', 10); pdf.cell(col1, 7, d[0], 0)
+            pdf.set_font('Helvetica', '', 10); pdf.cell(col2, 7, d[1], 0)
+            pdf.set_font('Helvetica', 'B', 10); pdf.cell(col1, 7, d[2], 0)
+            pdf.set_font('Helvetica', '', 10); pdf.cell(col2, 7, d[3], 0)
             pdf.ln()
 
         pdf.ln(5)
 
         # --- SECCIÓN: ESPECIFICACIONES ---
         if spec:
-            pdf.set_font('Arial', 'B', 12)
-            pdf.cell(0, 8, '  ESPECIFICACIONES TÉCNICAS ACTUALES', 0, 1, 'L', fill=True)
+            pdf.set_font('Helvetica', 'B', 12); pdf.cell(0, 8, '  ESPECIFICACIONES TECNICAS ACTUALES', 0, 1, 'L', fill=True)
             pdf.ln(2)
             
             specs_list = [
@@ -1272,33 +1264,27 @@ def export_expediente_pdf(id):
                 ('RAM:', f"{spec.ram} {spec.tipo_ram}", 'Disco:', f"{spec.almacenamiento} {spec.almacenamiento_tipo}")
             ]
             for s in specs_list:
-                pdf.set_font('Arial', 'B', 10)
-                pdf.cell(col1, 7, s[0], 0)
-                pdf.set_font('Arial', '', 10)
-                pdf.cell(col2, 7, s[1], 0)
-                pdf.set_font('Arial', 'B', 10)
-                pdf.cell(col1, 7, s[2], 0)
-                pdf.set_font('Arial', '', 10)
-                pdf.cell(col2, 7, s[3], 0)
+                pdf.set_font('Helvetica', 'B', 10); pdf.cell(col1, 7, s[0], 0)
+                pdf.set_font('Helvetica', '', 10); pdf.cell(col2, 7, s[1], 0)
+                pdf.set_font('Helvetica', 'B', 10); pdf.cell(col1, 7, s[2], 0)
+                pdf.set_font('Helvetica', '', 10); pdf.cell(col2, 7, s[3], 0)
                 pdf.ln()
         
         pdf.ln(10)
 
         # --- SECCIÓN: HISTORIAL DE INTERVENCIONES ---
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 8, '  HISTORIAL DE MANTENIMIENTOS Y EVENTOS', 0, 1, 'L', fill=True)
+        pdf.set_font('Helvetica', 'B', 12); pdf.cell(0, 8, '  HISTORIAL DE MANTENIMIENTOS Y EVENTOS', 0, 1, 'L', fill=True)
         pdf.ln(3)
 
-        pdf.set_font('Arial', 'B', 9)
-        pdf.set_fill_color(220, 220, 220)
+        pdf.set_font('Helvetica', 'B', 9); pdf.set_fill_color(220, 220, 220)
         pdf.cell(25, 8, 'Fecha', 1, 0, 'C', fill=True)
-        pdf.cell(40, 8, 'Técnico', 1, 0, 'C', fill=True)
+        pdf.cell(40, 8, 'Tecnico', 1, 0, 'C', fill=True)
         pdf.cell(30, 8, 'Tipo', 1, 0, 'C', fill=True)
-        pdf.cell(95, 8, 'Descripción del Trabajo / Falla', 1, 1, 'C', fill=True)
+        pdf.cell(95, 8, 'Descripcion del Trabajo / Falla', 1, 1, 'C', fill=True)
 
-        pdf.set_font('Arial', '', 8)
+        pdf.set_font('Helvetica', '', 8)
         for ev, tec, mant in historial:
-            desc = mant.descripcion_trabajo if mant else ev.falla_reportada or "Sin descripción"
+            desc = mant.descripcion_trabajo if mant else ev.falla_reportada or "Sin descripcion"
             fecha = ev.fecha_creacion.strftime("%d/%m/%Y")
             nombre_tec = f"{tec.nombre} {tec.apellido_paterno}"
             tipo = mant.tipo if mant else "Evento/Diag"
@@ -1308,13 +1294,17 @@ def export_expediente_pdf(id):
             pdf.cell(30, 8, tipo, 1, 0, 'C')
             pdf.multi_cell(95, 8, desc, 1, 'L')
 
-        # 3. Retornar el PDF directamente al navegador
-        pdf_output = pdf.output(dest='S')
+        # 3. Retornar el PDF
+        pdf_bytes = pdf.output()
+        buffer = io.BytesIO(pdf_bytes)
+        buffer.seek(0)
         
-        response = make_response(pdf_output)
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename=Expediente_{equipo.codigo_inventario}.pdf'
-        return response
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'Expediente_ID_{equipo.id}.pdf'
+        )
 
     except Exception as e:
         print(f"Error generando PDF: {str(e)}")
