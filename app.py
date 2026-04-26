@@ -1,5 +1,7 @@
 import os
 from flask import Flask, request, jsonify, make_response, send_file
+import io
+from fpdf import FPDF
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token
 import smtplib
@@ -1146,6 +1148,175 @@ def update_mantenimiento(id_evento):
         
     except Exception as e:
         db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+#---- SERVICIO DE REPORTES PDF (EXPEDIENTE TÉCNICO) --------------------------
+#------------------------------------------------------------------------------
+
+class PDF_Expediente(FPDF):
+    def header(self):
+        # 1. Logos Institucionales (SEP, TecNM, ITL, ExperTrack)
+        # Ajustamos tamaños y posiciones para que quepan en una fila
+        try:
+            # base_path ya está definido al inicio del archivo
+            sep_path = os.path.join(base_path, 'static', 'logos', 'sep.png')
+            tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.jpg')
+            itl_path = os.path.join(base_path, 'static', 'logos', 'itl.png')
+            exper_path = os.path.join(base_path, 'static', 'logos', 'ExperTrack.png')
+
+            self.image(sep_path, 10, 10, 35)
+            self.image(tecnm_path, 55, 10, 35)
+            self.image(itl_path, 110, 8, 28)
+            self.image(exper_path, 155, 10, 45)
+        except Exception as e:
+            print(f"Error al cargar logos en PDF: {e}")
+
+        self.ln(35)
+        # 2. Título del Reporte
+        self.set_font('Arial', 'B', 16)
+        self.set_text_color(33, 37, 41) # Gris oscuro
+        self.cell(0, 10, 'EXPEDIENTE TÉCNICO DE EQUIPO', 0, 1, 'C')
+        self.set_font('Arial', '', 10)
+        self.cell(0, 5, 'Sistema Gestor de Mantenimiento ExperTrack', 0, 1, 'C')
+        self.ln(10)
+        
+        # Línea divisoria
+        self.set_draw_color(200, 200, 200)
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.ln(5)
+
+    def footer(self):
+        # Posición a 1.5 cm del final
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        
+        # Fecha ACTUAL con desfase de -6 horas (México)
+        fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
+        
+        # Fecha (Izquierda)
+        self.cell(60, 10, f'Fecha: {fecha_gen}', 0, 0, 'L')
+        
+        # Derechos (Centro)
+        self.cell(70, 10, '© 2026 ExperTrack — Todos los derechos reservados', 0, 0, 'C')
+        
+        # Paginación (Derecha)
+        self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
+
+@app.route('/equipos/<int:id>/expediente_pdf', methods=['GET'])
+@jwt_required()
+def export_expediente_pdf(id):
+    try:
+        # 1. Obtener datos del equipo e historial
+        equipo = Equipo.query.get(id)
+        if not equipo:
+            return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
+            
+        spec = Especificacion.query.filter_by(id_equipo=id, es_actual=True).first()
+        
+        # Consultar eventos con su mantenimiento y técnico
+        historial = db.session.query(Evento, Usuario, Mantenimiento)\
+            .join(Usuario, Evento.id_usuario == Usuario.id_usuario)\
+            .outerjoin(Mantenimiento, Evento.id_evento == Mantenimiento.id_evento)\
+            .filter(Evento.id_equipo == id)\
+            .order_by(Evento.fecha_creacion.desc())\
+            .all()
+
+        # 2. Crear documento PDF
+        pdf = PDF_Expediente()
+        pdf.alias_nb_pages()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=20)
+
+        # --- SECCIÓN: INFORMACIÓN DEL EQUIPO ---
+        pdf.set_font('Arial', 'B', 12)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(0, 8, '  IDENTIFICACIÓN DEL EQUIPO', 0, 1, 'L', fill=True)
+        pdf.ln(2)
+        
+        pdf.set_font('Arial', '', 10)
+        col1, col2 = 40, 60
+        
+        datos_equipo = [
+            ('Código Inventario:', equipo.codigo_inventario or "N/A", 'Marca:', equipo.marca or "N/A"),
+            ('No. de Serie:', equipo.numero_serie or "N/A", 'Modelo:', equipo.modelo or "N/A"),
+            ('Tipo de Equipo:', equipo.tipo_equipo or "N/A", 'Área:', equipo.area or "N/A"),
+            ('Ubicación:', equipo.ubicacion or "N/A", 'Estatus:', equipo.estado_operativo or "N/A")
+        ]
+        
+        for d in datos_equipo:
+            pdf.set_font('Arial', 'B', 10)
+            pdf.cell(col1, 7, d[0], 0)
+            pdf.set_font('Arial', '', 10)
+            pdf.cell(col2, 7, d[1], 0)
+            pdf.set_font('Arial', 'B', 10)
+            pdf.cell(col1, 7, d[2], 0)
+            pdf.set_font('Arial', '', 10)
+            pdf.cell(col2, 7, d[3], 0)
+            pdf.ln()
+
+        pdf.ln(5)
+
+        # --- SECCIÓN: ESPECIFICACIONES ---
+        if spec:
+            pdf.set_font('Arial', 'B', 12)
+            pdf.cell(0, 8, '  ESPECIFICACIONES TÉCNICAS ACTUALES', 0, 1, 'L', fill=True)
+            pdf.ln(2)
+            
+            specs_list = [
+                ('CPU:', spec.procesador, 'S.O:', spec.sistema_operativo),
+                ('RAM:', f"{spec.ram} {spec.tipo_ram}", 'Disco:', f"{spec.almacenamiento} {spec.almacenamiento_tipo}")
+            ]
+            for s in specs_list:
+                pdf.set_font('Arial', 'B', 10)
+                pdf.cell(col1, 7, s[0], 0)
+                pdf.set_font('Arial', '', 10)
+                pdf.cell(col2, 7, s[1], 0)
+                pdf.set_font('Arial', 'B', 10)
+                pdf.cell(col1, 7, s[2], 0)
+                pdf.set_font('Arial', '', 10)
+                pdf.cell(col2, 7, s[3], 0)
+                pdf.ln()
+        
+        pdf.ln(10)
+
+        # --- SECCIÓN: HISTORIAL DE INTERVENCIONES ---
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, '  HISTORIAL DE MANTENIMIENTOS Y EVENTOS', 0, 1, 'L', fill=True)
+        pdf.ln(3)
+
+        pdf.set_font('Arial', 'B', 9)
+        pdf.set_fill_color(220, 220, 220)
+        pdf.cell(25, 8, 'Fecha', 1, 0, 'C', fill=True)
+        pdf.cell(40, 8, 'Técnico', 1, 0, 'C', fill=True)
+        pdf.cell(30, 8, 'Tipo', 1, 0, 'C', fill=True)
+        pdf.cell(95, 8, 'Descripción del Trabajo / Falla', 1, 1, 'C', fill=True)
+
+        pdf.set_font('Arial', '', 8)
+        for ev, tec, mant in historial:
+            desc = mant.descripcion_trabajo if mant else ev.falla_reportada or "Sin descripción"
+            fecha = ev.fecha_creacion.strftime("%d/%m/%Y")
+            nombre_tec = f"{tec.nombre} {tec.apellido_paterno}"
+            tipo = mant.tipo if mant else "Evento/Diag"
+            
+            pdf.cell(25, 8, fecha, 1, 0, 'C')
+            pdf.cell(40, 8, nombre_tec[:22], 1, 0, 'C')
+            pdf.cell(30, 8, tipo, 1, 0, 'C')
+            pdf.multi_cell(95, 8, desc, 1, 'L')
+
+        # 3. Retornar el PDF directamente al navegador
+        pdf_output = pdf.output(dest='S')
+        
+        response = make_response(pdf_output)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename=Expediente_{equipo.codigo_inventario}.pdf'
+        return response
+
+    except Exception as e:
+        print(f"Error generando PDF: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 #------------------------------------------------------------------------------
