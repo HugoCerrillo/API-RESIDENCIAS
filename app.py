@@ -1178,7 +1178,7 @@ class PDF_Expediente(FPDF):
         # 2. Título del Reporte
         self.set_font('Arial', 'B', 16)
         self.set_text_color(33, 37, 41) # Gris oscuro
-        self.cell(0, 10, 'EXPEDIENTE TÉCNICO DE EQUIPO', 0, 1, 'C')
+        self.cell(0, 10, 'EXPEDIENTE TECNICO DE EQUIPO', 0, 1, 'C')
         self.set_font('Arial', '', 10)
         self.cell(0, 5, 'Sistema Gestor de Mantenimiento ExperTrack', 0, 1, 'C')
         self.ln(10)
@@ -1201,10 +1201,10 @@ class PDF_Expediente(FPDF):
         self.cell(60, 10, f'Fecha: {fecha_gen}', 0, 0, 'L')
         
         # Derechos (Centro)
-        self.cell(70, 10, '© 2026 ExperTrack — Todos los derechos reservados', 0, 0, 'C')
+        self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
         
         # Paginación (Derecha)
-        self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
+        self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
 
 #
 @app.route('/equipos/<int:id>/expediente_pdf', methods=['GET'])
