@@ -1303,8 +1303,9 @@ def export_expediente_pdf(id):
             pdf.cell(30, altura_fila, tipo, 1, 0, 'C')
             
             # 3. Dibujamos la multicelda al final
-            # El interlineado aqui debe ser 6 para que coincida con nuestro calculo
-            pdf.multi_cell(95, 6, desc, 1, 'L')
+            # Dividimos la altura_fila entre el numero de lineas para que rellene todo el espacio
+            h_cada_linea = altura_fila / len(lineas_desc)
+            pdf.multi_cell(95, h_cada_linea, desc, 1, 'L')
             # ------------------------------------------
 
         # 3. Retornar el PDF
