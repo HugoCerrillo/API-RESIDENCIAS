@@ -1300,21 +1300,22 @@ def export_expediente_pdf(id):
 #------------------------------------------------------------------------------
 class PDF_Inventario(FPDF):
     def header(self):
-        # 1. Logos institucionales
+        # 1. Logos institucionales (Mismo orden y rutas que el expediente)
         try:
             sep_path = os.path.join(base_path, 'static', 'logos', 'sep.png')
-            tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.png')
+            tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.jpg') # Corregido a .jpg
             itl_path = os.path.join(base_path, 'static', 'logos', 'itl.png')
-            logo_path = os.path.join(base_path, 'static', 'logos', 'expertrack.png')
+            exper_path = os.path.join(base_path, 'static', 'logos', 'ExperTrack.png') # Corregido Case
             
-            self.image(sep_path, 10, 8, 35)
-            self.image(tecnm_path, 50, 8, 25)
-            self.image(itl_path, 80, 8, 25)
-            self.image(logo_path, 170, 8, 30)
+            # Coordenadas sincronizadas para consistencia
+            self.image(sep_path, 10, 10, 35)
+            self.image(tecnm_path, 55, 10, 35)
+            self.image(itl_path, 110, 8, 28)
+            self.image(exper_path, 155, 10, 45)
         except Exception as e:
             print(f"Error cargando logos en Inventario: {e}")
 
-        self.ln(30)
+        self.ln(35) # Aumentado para dar espacio a los logos
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(33, 37, 41)
         self.cell(0, 10, 'INVENTARIO GENERAL DE EQUIPO TECNOLOGICO', 0, 1, 'C')
@@ -1332,7 +1333,9 @@ class PDF_Inventario(FPDF):
         self.cell(60, 10, f'Generado el: {fecha_gen}', 0, 0, 'L')
         self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
         self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
+#------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------
 # Endpoint para generar el Inventario en PDF
 @app.route('/reporte_inventario_pdf', methods=['GET'])
 @jwt_required()
