@@ -14,6 +14,7 @@ from sqlalchemy import func
 from functools import wraps  #para usar decoradores
 from models import db, Usuario, Equipo, Periferico, Especificacion, CategoriaHecho, SintomaHecho, FallaHecho, Evento, Diagnostico, Mantenimiento, Alerta
 from pyswip import Prolog
+from flask_apscheduler import APScheduler
 
 #---------------------------------------------------------
 #----------Prolog ----------------
@@ -35,6 +36,10 @@ pymysql.install_as_MySQLdb()
 #----------------------------------------------------
 #inicializacion de la aplicacion
 app = Flask(__name__)
+
+#configuración del Planificador de Tareas (Scheduler)
+scheduler = APScheduler()
+app.config['SCHEDULER_API_ENABLED'] = True
 #----------------------------------------------------
 
 #----------------------------------------------------
@@ -70,6 +75,7 @@ app.config['JWT_ACCESS_COOKIE_PATH'] = '/' #ruta de la cookie
 app.config['JWT_COOKIE_SAMESITE'] = 'None' #necesario si Vercel y AWS estan en dominios distintos (NONE para desplegado, LAX para local)
 jwt = JWTManager(app) #inicializamos el JWT
 db.init_app(app) #inicializamos la base de datos
+scheduler.init_app(app) #inicializamos el scheduler
 #----------------------------------------------------
 
 #----------------------------------------------------
@@ -624,6 +630,130 @@ def delete_equipo(id):
         return jsonify({"status": "error", "message": str(e)}), 500
 #----------------------------------------------------
 
+#------------------------------------------------------------------------------
+#clase para generar pdf de inventario general
+class PDF_Inventario(FPDF):
+    def header(self):
+        #1. Logos institucionales 
+        try:
+            sep_path = os.path.join(base_path, 'static', 'logos', 'sep.png')
+            tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.jpg') 
+            itl_path = os.path.join(base_path, 'static', 'logos', 'itl.png')
+            exper_path = os.path.join(base_path, 'static', 'logos', 'ExperTrack.png') 
+                        
+            self.image(sep_path, 10, 10, 35)
+            self.image(tecnm_path, 55, 10, 35)
+            self.image(itl_path, 110, 8, 28)
+            self.image(exper_path, 155, 10, 45)
+        except Exception as e:
+            print(f"Error cargando logos en Inventario: {e}")
+
+        self.ln(35) 
+        self.set_font('Helvetica', 'B', 16)
+        self.set_text_color(33, 37, 41)
+        self.cell(0, 10, 'INVENTARIO GENERAL DE EQUIPO TECNOLOGICO', 0, 1, 'C')
+        self.set_font('Helvetica', '', 10)
+        self.cell(0, 5, 'ExperTrack - Sistema de Control de Activos', 0, 1, 'C')
+        self.ln(5)
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Helvetica', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
+        self.cell(60, 10, f'Generado el: {fecha_gen}', 0, 0, 'L')
+        self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
+        self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+#endpoint para generar el inventario en pdf
+@app.route('/reporte_inventario_pdf', methods=['GET'])
+@jwt_required()
+def export_inventario_pdf():
+    try:
+        #1. verificar permisos y obtener datos del solicitante
+        usuario_id = get_jwt_identity()
+        usuario_gen = Usuario.query.get(usuario_id)
+        if usuario_gen.rol not in ['Administrador', 'Técnico']:
+            return jsonify({"status": "error", "message": "No tienes permisos para generar este reporte"}), 403
+
+        #2. obtener todos los equipos
+        equipos = Equipo.query.order_by(Equipo.codigo_inventario).all()
+
+        #3. crear pdf
+        pdf = PDF_Inventario()
+        pdf.alias_nb_pages()
+        pdf.add_page()
+        
+        #datos del solicitante en el cuerpo
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.set_text_color(50, 50, 50)
+        pdf.cell(0, 7, f"Reporte generado por: {usuario_gen.nombre} {usuario_gen.apellido_paterno} ({usuario_gen.rol})", 0, 1, 'L')
+        pdf.ln(5)
+
+        #encabezados de tabla
+        pdf.set_fill_color(80, 75, 56)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font('Helvetica', 'B', 9)
+        
+        pdf.cell(35, 10, 'Cod. Inventario', 1, 0, 'C', fill=True)
+        pdf.cell(25, 10, 'Tipo', 1, 0, 'C', fill=True)
+        pdf.cell(50, 10, 'Marca / Modelo', 1, 0, 'C', fill=True)
+        pdf.cell(50, 10, 'Area / Ubicacion', 1, 0, 'C', fill=True)
+        pdf.cell(30, 10, 'Estatus', 1, 1, 'C', fill=True)
+
+        #cuerpo de la tabla
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font('Helvetica', '', 8)
+        
+        #iterar sobre los equipos
+        for e in equipos:
+            marca_modelo = f"{e.marca or ''} {e.modelo or ''}"
+            area_ubic = e.area or "N/A"
+            
+            #calculamos altura dinamica para que no se vea mas chica una celda de la otra
+            lineas_marca = pdf.multi_cell(50, 6, marca_modelo, split_only=True)
+            lineas_area = pdf.multi_cell(50, 6, area_ubic, split_only=True)
+            max_lineas = max(len(lineas_marca), len(lineas_area))
+            h = max_lineas * 6
+            if h < 8: h = 8
+
+            pdf.cell(35, h, e.codigo_inventario or "N/A", 1, 0, 'C')
+            pdf.cell(25, h, e.tipo_equipo or "N/A", 1, 0, 'C')
+            
+            #Marca/Modelo
+            curr_x, curr_y = pdf.get_x(), pdf.get_y()
+            pdf.multi_cell(50, h/len(lineas_marca), marca_modelo, 1, 'C')
+            pdf.set_xy(curr_x + 50, curr_y)
+            
+            #Area
+            curr_x, curr_y = pdf.get_x(), pdf.get_y()
+            pdf.multi_cell(50, h/len(lineas_area), area_ubic, 1, 'C')
+            pdf.set_xy(curr_x + 50, curr_y)
+            
+            pdf.cell(30, h, e.estado_operativo or "N/A", 1, 1, 'C')
+
+        #4. exportar pdf
+        pdf_bytes = pdf.output()
+        buffer = io.BytesIO(pdf_bytes)
+        buffer.seek(0)
+        
+        #5. enviar archivo descargable
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'Inventario_ExperTrack_{datetime.now().strftime("%Y%m%d")}.pdf'
+        )
+
+    except Exception as e:
+        print(f"Error reporte inventario: {e}")
+        return jsonify({"status": "error", "message": f"Error interno: {str(e)}"}), 500
+
+#------------------------------------------------------------------------------
 
 #-------------------------------------------------------------------------------------------------------
 #---------- Endpoints para Modulo de Diagnostico con Sistema Experto
@@ -641,22 +771,22 @@ def diagnosticar():
         sintoma = data.get('sintoma') #sintoma (manifestación de falla) principal
         historial = data.get('historial', []) #historial de preguntas y respuestas
 
-        # 1. limpiamos la memoria antes de procesar
+        #1. limpiamos la memoria antes de procesar
         #usamos la regla que definimos en reglas.pl
         list(prolog.query("limpiar_memoria"))
 
-        # 2. Inyectamos el historial
+        #2. Inyectamos el historial
         for paso in historial:
             pregunta = paso['p'] #pregunta
             respuesta = paso['r'] # 'si' o 'no'
             #envolvemos el valor en comillas simples para Prolog
             prolog.assertz(f"respuesta('{pregunta}', {respuesta})")
 
-        # 3. Ejecutamos la consulta principal
+        #3. Ejecutamos la consulta principal
         query_str = f"siguiente_paso('{tipo}', '{sintoma}', Accion, Valor)" #consulta principal
         results = list(prolog.query(query_str)) #obtenemos los resultados
 
-        # 4. Procesamos la respuesta
+        #4. Procesamos la respuesta
         if results:
             res = results[0]
             #procesamos los datos a string
@@ -676,6 +806,7 @@ def diagnosticar():
         return jsonify({"status": "error", "mensaje": str(e)}), 500
 #----------------------------------------------
 
+
 #------------------------------------------------------------------------------
 #---- Endpoints para Modulo de Mantenimiento Preventivo/Correctivo-------------
 
@@ -693,7 +824,7 @@ def create_evento():
     id_tecnico_asignado = None
     
     try:
-        #1. DETERMINAR ASIGNACION DE TECNICO
+        #1. determinamos el tecnico asignado
         if usuario_creador.rol == 'Técnico':
             #si el creador es tecnico, se lo asigna a sí mismo
             id_tecnico_asignado = usuario_id_creador
@@ -717,12 +848,12 @@ def create_evento():
             #Administradores u otros roles no generan eventos
             return jsonify({"status": "error", "message": "Tu rol no tiene permisos para generar eventos"}), 403
 
-        #2. Buscar el equipo para cambiar su estado
+        #2. buscar el equipo para cambiar su estado
         equipo = Equipo.query.get(id_equipo)
         if not equipo:
             return jsonify({"status": "error", "message": "El equipo especificado no existe"}), 404
             
-        #3. Creamos el nuevo evento
+        #3. creamos el nuevo evento
         nuevo_evento = Evento(
             id_equipo=id_equipo, #equipo que se reporta
             id_usuario=id_tecnico_asignado, #técnico asignado automáticamente
@@ -731,7 +862,7 @@ def create_evento():
             validado=False #por defecto inicia en False
         )
         
-        #4. Automatización: Cambiamos el estado del equipo a 'En Mantenimiento'
+        #4. automatizacion: cambiamos el estado del equipo a 'En Mantenimiento'
         equipo.estado_operativo = 'En Mantenimiento'
         
         db.session.add(nuevo_evento) #agregamos el nuevo evento a la base de datos
@@ -1124,15 +1255,12 @@ def update_mantenimiento(id_evento):
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-#---- SERVICIO DE REPORTES PDF (EXPEDIENTE TÉCNICO) --------------------------
-#------------------------------------------------------------------------------
-
+#clase para generar pdf de expediente tecnico
 class PDF_Expediente(FPDF):
     def header(self):
-        # 1. Logos Institucionales (SEP, TecNM, ITL, ExperTrack)
-        # Ajustamos tamaños y posiciones para que quepan en una fila
-        try:
-            # base_path ya está definido al inicio del archivo
+        #1. logos institucionales (SEP, TecNM, ITL, ExperTrack)
+        #ajustamos tamaños y posiciones para que quepan en una fila
+        try:            
             sep_path = os.path.join(base_path, 'static', 'logos', 'sep.png')
             tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.jpg')
             itl_path = os.path.join(base_path, 'static', 'logos', 'itl.png')
@@ -1146,43 +1274,45 @@ class PDF_Expediente(FPDF):
             print(f"Error al cargar logos en PDF: {e}")
 
         self.ln(35)
-        # 2. Título del Reporte
+        #2. titulo del reporte
         self.set_font('Helvetica', 'B', 16)
-        self.set_text_color(33, 37, 41) # Gris oscuro
+        self.set_text_color(33, 37, 41)
         self.cell(0, 10, 'EXPEDIENTE TECNICO DE EQUIPO', 0, 1, 'C')
         self.set_font('Helvetica', '', 10)
         self.cell(0, 5, 'Sistema Gestor de Mantenimiento ExperTrack', 0, 1, 'C')
         self.ln(10)
         
-        # Línea divisoria
+        #linea divisoria
         self.set_draw_color(200, 200, 200)
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(5)
 
+    #pie de pagina del pdf
     def footer(self):
-        # Posición a 1.5 cm del final
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
         
-        # Fecha ACTUAL con desfase de -6 horas (México)
+        #fecha actual
         fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
         
-        # Fecha (Izquierda)
+        #fecha
         self.cell(60, 10, f'Fecha: {fecha_gen}', 0, 0, 'L')
         
-        # Derechos (Centro)
+        #derechos de author
         self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
         
-        # Paginación (Derecha)
+        #paginacion
         self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
+#------------------------------------------------------------------------------
 
-#
+#------------------------------------------------------------------------------
+#endpoint para generar pdf de expediente tecnico
 @app.route('/equipos/<int:id>/expediente_pdf', methods=['GET'])
 @jwt_required()
 def export_expediente_pdf(id):
     try:
-        # 1. Obtener datos
+        #1. obtener datos
         equipo = Equipo.query.get(id)
         if not equipo:
             return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
@@ -1194,13 +1324,13 @@ def export_expediente_pdf(id):
             .order_by(Evento.fecha_creacion.desc())\
             .all()
 
-        # 2. Diseñar PDF
+        #2. diseñar pdf
         pdf = PDF_Expediente()
         pdf.alias_nb_pages()
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=20)
 
-        # --- SECCION: IDENTIFICACION DEL EQUIPO ---
+        #seccion de identificacion del equipo
         pdf.set_font('Helvetica', 'B', 12)
         pdf.set_fill_color(240, 240, 240)
         pdf.cell(0, 8, '  IDENTIFICACION DEL EQUIPO', 0, 1, 'L', fill=True)
@@ -1209,13 +1339,15 @@ def export_expediente_pdf(id):
         pdf.set_font('Helvetica', '', 10)
         col1, col2 = 40, 60
         
+        #datos del equipo
         datos_equipo = [
             ('Codigo Inventario:', equipo.codigo_inventario or "N/A", 'Marca:', equipo.marca or "N/A"),
             ('No. de Serie:', equipo.numero_serie or "N/A", 'Modelo:', equipo.modelo or "N/A"),
             ('Tipo de Equipo:', equipo.tipo_equipo or "N/A", 'Area:', equipo.area or "N/A"),
             ('Ubicacion:', equipo.ubicacion or "N/A", 'Estatus:', equipo.estado_operativo or "N/A")
-        ]
+        ] 
         
+        #iteramos sobre los datos del equipo
         for d in datos_equipo:
             pdf.set_font('Helvetica', 'B', 10); pdf.cell(col1, 7, d[0], 0)
             pdf.set_font('Helvetica', '', 10); pdf.cell(col2, 7, d[1], 0)
@@ -1225,7 +1357,7 @@ def export_expediente_pdf(id):
 
         pdf.ln(5)
 
-        # --- SECCIÓN: ESPECIFICACIONES ---
+        #seccion de especificaciones tecnicas
         if spec:
             pdf.set_font('Helvetica', 'B', 12); pdf.cell(0, 8, '  ESPECIFICACIONES TECNICAS ACTUALES', 0, 1, 'L', fill=True)
             pdf.ln(2)
@@ -1243,7 +1375,7 @@ def export_expediente_pdf(id):
         
         pdf.ln(10)
 
-        # --- SECCIÓN: HISTORIAL DE INTERVENCIONES ---
+        #seccion de historial de mantenimientos y eventos
         pdf.set_font('Helvetica', 'B', 12); pdf.cell(0, 8, '  HISTORIAL DE MANTENIMIENTOS Y EVENTOS', 0, 1, 'L', fill=True)
         pdf.ln(3)
 
@@ -1259,31 +1391,28 @@ def export_expediente_pdf(id):
             fecha = ev.fecha_creacion.strftime("%d/%m/%Y")
             nombre_tec = f"{tec.nombre} {tec.apellido_paterno}"
             tipo = mant.tipo if mant else "Evento/Diag"
-            
-            # --- MEJORA DE DISEÑO: ALTURA DINAMICA ---
-            # 1. Calculamos cuantas lineas ocupara la descripcion (ancho 95)
-            # Usamos split_only=True para obtener la lista de lineas sin dibujarlas aun
+            #calculamos cuantas lineas ocupara la descripcion (ancho 95)
+            #usamos split_only para obtener la lista de lineas sin dibujarlas aun
             lineas_desc = pdf.multi_cell(95, 6, desc, split_only=True)
-            altura_fila = len(lineas_desc) * 6 # 6 es el interlineado
-            if altura_fila < 8: altura_fila = 8 # Altura minima por fila
+            altura_fila = len(lineas_desc) * 6 #interlineado de 6
+            if altura_fila < 8: altura_fila = 8 #altura minima por fila
             
-            # 2. Dibujamos las primeras 3 celdas con la altura total calculada
-            # El parametro 0 al final indica que no salte de linea aun
+            #dibujamos las primeras 3 celdas con la altura total calculada
+            #el parametro 0 al final indica que no salte de linea aun
             pdf.cell(25, altura_fila, fecha, 1, 0, 'C')
             pdf.cell(40, altura_fila, nombre_tec[:22], 1, 0, 'C')
             pdf.cell(30, altura_fila, tipo, 1, 0, 'C')
             
-            # 3. Dibujamos la multicelda al final
-            # Dividimos la altura_fila entre el numero de lineas para que rellene todo el espacio
+            #dibujamos la multicelda al final
+            #dividimos la altura_fila entre el numero de lineas para que rellene todo el espacio
             h_cada_linea = altura_fila / len(lineas_desc)
-            pdf.multi_cell(95, h_cada_linea, desc, 1, 'L')
-            # ------------------------------------------
+            pdf.multi_cell(95, h_cada_linea, desc, 1, 'L')        
 
-        # 3. Retornar el PDF
+        #retornamos el pdf
         pdf_bytes = pdf.output()
         buffer = io.BytesIO(pdf_bytes)
         buffer.seek(0)
-        
+            
         return send_file(
             buffer,
             mimetype='application/pdf',
@@ -1295,131 +1424,7 @@ def export_expediente_pdf(id):
         print(f"Error generando PDF: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-#------------------------------------------------------------------------------
-# CLASE PARA REPORTE DE INVENTARIO GENERAL
-#------------------------------------------------------------------------------
-class PDF_Inventario(FPDF):
-    def header(self):
-        # 1. Logos institucionales (Mismo orden y rutas que el expediente)
-        try:
-            sep_path = os.path.join(base_path, 'static', 'logos', 'sep.png')
-            tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.jpg') # Corregido a .jpg
-            itl_path = os.path.join(base_path, 'static', 'logos', 'itl.png')
-            exper_path = os.path.join(base_path, 'static', 'logos', 'ExperTrack.png') # Corregido Case
-            
-            # Coordenadas sincronizadas para consistencia
-            self.image(sep_path, 10, 10, 35)
-            self.image(tecnm_path, 55, 10, 35)
-            self.image(itl_path, 110, 8, 28)
-            self.image(exper_path, 155, 10, 45)
-        except Exception as e:
-            print(f"Error cargando logos en Inventario: {e}")
-
-        self.ln(35) # Aumentado para dar espacio a los logos
-        self.set_font('Helvetica', 'B', 16)
-        self.set_text_color(33, 37, 41)
-        self.cell(0, 10, 'INVENTARIO GENERAL DE EQUIPO TECNOLOGICO', 0, 1, 'C')
-        self.set_font('Helvetica', '', 10)
-        self.cell(0, 5, 'ExperTrack - Sistema de Control de Activos', 0, 1, 'C')
-        self.ln(5)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(5)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Helvetica', 'I', 8)
-        self.set_text_color(128, 128, 128)
-        fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
-        self.cell(60, 10, f'Generado el: {fecha_gen}', 0, 0, 'L')
-        self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
-        self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
-#------------------------------------------------------------------------------
-
-#------------------------------------------------------------------------------
-# Endpoint para generar el Inventario en PDF
-@app.route('/reporte_inventario_pdf', methods=['GET'])
-@jwt_required()
-def export_inventario_pdf():
-    try:
-        # 1. Verificar permisos y obtener datos del generador
-        usuario_id = get_jwt_identity()
-        usuario_gen = Usuario.query.get(usuario_id)
-        if usuario_gen.rol not in ['Administrador', 'Técnico']:
-            return jsonify({"status": "error", "message": "No tienes permisos para generar este reporte"}), 403
-
-        # 2. Obtener todos los equipos
-        equipos = Equipo.query.order_by(Equipo.codigo_inventario).all()
-
-        # 3. Crear PDF
-        pdf = PDF_Inventario()
-        pdf.alias_nb_pages()
-        pdf.add_page()
-        
-        # Datos del generador en el cuerpo
-        pdf.set_font('Helvetica', 'B', 10)
-        pdf.set_text_color(50, 50, 50)
-        pdf.cell(0, 7, f"Reporte generado por: {usuario_gen.nombre} {usuario_gen.apellido_paterno} ({usuario_gen.rol})", 0, 1, 'L')
-        pdf.ln(5)
-
-        # Encabezados de tabla
-        pdf.set_fill_color(80, 75, 56) # Color institucional ExperTrack
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font('Helvetica', 'B', 9)
-        
-        pdf.cell(35, 10, 'Cod. Inventario', 1, 0, 'C', fill=True)
-        pdf.cell(25, 10, 'Tipo', 1, 0, 'C', fill=True)
-        pdf.cell(50, 10, 'Marca / Modelo', 1, 0, 'C', fill=True)
-        pdf.cell(50, 10, 'Area / Ubicacion', 1, 0, 'C', fill=True)
-        pdf.cell(30, 10, 'Estatus', 1, 1, 'C', fill=True)
-
-        # Cuerpo de la tabla
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font('Helvetica', '', 8)
-        
-        for e in equipos:
-            marca_modelo = f"{e.marca or ''} {e.modelo or ''}"
-            area_ubic = e.area or "N/A"
-            
-            # Calculamos altura dinamica
-            lineas_marca = pdf.multi_cell(50, 6, marca_modelo, split_only=True)
-            lineas_area = pdf.multi_cell(50, 6, area_ubic, split_only=True)
-            max_lineas = max(len(lineas_marca), len(lineas_area))
-            h = max_lineas * 6
-            if h < 8: h = 8
-
-            pdf.cell(35, h, e.codigo_inventario or "N/A", 1, 0, 'C')
-            pdf.cell(25, h, e.tipo_equipo or "N/A", 1, 0, 'C')
-            
-            # Marca/Modelo
-            curr_x, curr_y = pdf.get_x(), pdf.get_y()
-            pdf.multi_cell(50, h/len(lineas_marca), marca_modelo, 1, 'C')
-            pdf.set_xy(curr_x + 50, curr_y)
-            
-            # Area
-            curr_x, curr_y = pdf.get_x(), pdf.get_y()
-            pdf.multi_cell(50, h/len(lineas_area), area_ubic, 1, 'C')
-            pdf.set_xy(curr_x + 50, curr_y)
-            
-            pdf.cell(30, h, e.estado_operativo or "N/A", 1, 1, 'C')
-
-        # 4. Salida binaria
-        pdf_bytes = pdf.output()
-        buffer = io.BytesIO(pdf_bytes)
-        buffer.seek(0)
-        
-        return send_file(
-            buffer,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name=f'Inventario_ExperTrack_{datetime.now().strftime("%Y%m%d")}.pdf'
-        )
-
-    except Exception as e:
-        print(f"Error reporte inventario: {e}")
-        return jsonify({"status": "error", "message": f"Error interno: {str(e)}"}), 500
-
-#------------------------------------------------------------------------------
-
+#----------------------------------------------------
 
 #----------------------------------------------
 #endpoint para obtener los sintomas de la bd (bd extra)
@@ -1549,11 +1554,11 @@ def create_sintoma_hecho():
         
     data = request.json #obtenemos los datos en json
     
-    # Datos del síntoma
+    #datos del síntoma (manifestacion de falla)
     clave = data.get('clave')
     descripcion = data.get('descripcion')
     
-    # Datos de la falla obligatoria (para evitar síntomas huérfanos)
+    #datos de la falla obligatoria (para evitar sintomas huerfanitos)
     tipo_equipo = data.get('tipo_equipo')
     categoria_id = data.get('categoria_id')
     pregunta_pista = data.get('pregunta_pista')
@@ -1573,10 +1578,10 @@ def create_sintoma_hecho():
         return jsonify({"status": "error", "message": "El tipo_equipo de la falla debe ser 'PC' o 'Laptop'"}), 400
 
     try:
-        #iniciamos transaccion: primero el sintoma
+        #iniciamos el guardado, primero el sintoma
         nuevo_sintoma = SintomaHecho(clave=clave, descripcion=descripcion)
         db.session.add(nuevo_sintoma)
-        db.session.flush() # flush para obtener el ID del sintoma sin confirmar la transaccion aun
+        db.session.flush() #obtenemos el ID del sintoma sin confirmar la transaccion aun
 
         #creamos la falla ligada al nuevo sintoma
         nueva_falla = FallaHecho(
@@ -1675,14 +1680,14 @@ def create_falla_hecho():
 @app.route('/fallas_hechos', methods=['GET'])
 @jwt_required() #solo usuarios autenticados
 def get_fallas_hechos():
-    try:
-        # Filtros opcionales
+    try:              
         tipo = request.args.get('tipo')
         sintoma_id = request.args.get('sintoma_id')
         categoria_id = request.args.get('categoria_id')
         
-        query = FallaHecho.query
+        query = FallaHecho.query #obtenemos todas las fallas
         
+        #filtros
         if tipo:
             query = query.filter(FallaHecho.tipo_equipo == tipo)
         if sintoma_id:
@@ -1692,11 +1697,11 @@ def get_fallas_hechos():
             
         fallas = query.all()
         
-        # Construimos una respuesta enriquecida para el frontend
+        #construimos la respuesta 
         resultado = []
         for f in fallas:
             f_dict = f.to_dict()
-            # Agregamos nombres descriptivos gracias a las relaciones del modelo
+            #agregamos nombres descriptivos gracias a las relaciones
             f_dict['sintoma_descripcion'] = f.sintoma.descripcion if f.sintoma else "N/A"
             f_dict['categoria_nombre'] = f.categoria.nombre if f.categoria else "N/A"
             resultado.append(f_dict)
@@ -1710,6 +1715,7 @@ def get_fallas_hechos():
         return jsonify({"status": "error", "message": f"Error al obtener fallas: {str(e)}"}), 500
 #------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------
 #endpoint para descargar el archivo hechos.pl (para presentacion/backup)
 @app.route('/exportar_hechos', methods=['GET'])
 @jwt_required() #solo usuarios autenticados
@@ -1736,12 +1742,254 @@ def exportar_hechos():
 
 #------------------------------------------------------------------------------
 
-#sincronizamos hechos al arrancar el servidor
+
+#------------------------------------------------------------------------------
+#---- Endpoints para Módulo de Alertas -------------
+#------------------------------------------------------------------------------
+
+#endpoint para crear una nueva alerta
+@app.route('/alertas', methods=['POST'])
+@jwt_required() #solo usuarios autenticados
+def create_alerta():
+    usuario_id_auth = get_jwt_identity() #obtenemos el id del usuario
+    usuario_auth = Usuario.query.get(usuario_id_auth) #obtenemos el usuario
+    
+    #solo los administradores y técnicos pueden crear alertas
+    if usuario_auth.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos para crear alertas"}), 403
+
+    data = request.json
+    id_equipo = data.get('id_equipo') # id del equipo al que se le enviara la alerta
+    id_usuario = data.get('id_usuario') # id del usuario al que se le enviara la alerta
+    titulo = data.get('titulo') # titulo de la alerta
+    descripcion = data.get('descripcion') # descripcion de la alerta
+    fecha_programada = data.get('fecha_programada') # fecha en la que se enviara la alerta
+
+    if not all([id_equipo, id_usuario, titulo, fecha_programada]):
+        return jsonify({"status": "error", "message": "Faltan campos obligatorios"}), 400
+
+    try:
+        #verificamos existencia
+        if not Equipo.query.get(id_equipo):
+            return jsonify({"status": "error", "message": "El equipo no existe"}), 404
+        if not Usuario.query.get(id_usuario):
+            return jsonify({"status": "error", "message": "El usuario responsable no existe"}), 404
+
+        #creamos la alerta
+        nueva_alerta = Alerta(
+            id_equipo=id_equipo,
+            id_usuario=id_usuario,
+            titulo=titulo,
+            descripcion=descripcion,
+            fecha_programada=datetime.strptime(fecha_programada, '%Y-%m-%d').date()
+        ) 
+        
+        db.session.add(nueva_alerta) #agregamos la alerta a la base de datos
+        db.session.commit() #confirmamos la transaccion
+        return jsonify({"status": "success", "message": "Alerta creada correctamente", "alerta": nueva_alerta.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#--------------------------------------------------
+
+#--------------------------------------------------
+#endpoint para visualizar todas las alertas
+@app.route('/alertas', methods=['GET'])
+@jwt_required() #solo usuarios autenticados
+def get_alertas():
+    usuario_auth = Usuario.query.get(get_jwt_identity()) #obtenemos el id del usuario
+    
+    #solo los administradores y técnicos pueden ver las alertas
+    if usuario_auth.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+
+    try:
+        #filtro por estatus
+        estatus = request.args.get('estatus')
+        query = db.session.query(Alerta, Equipo, Usuario).join(Equipo, Alerta.id_equipo == Equipo.id_equipo).join(Usuario, Alerta.id_usuario == Usuario.id_usuario)
+        
+        #aplicamos el filtro si se proporciona
+        if estatus:
+            query = query.filter(Alerta.estatus == estatus)
+            
+        #ejecutamos la consulta
+        alertas = query.all()
+        resultado = []
+        for al, eq, us in alertas:
+            al_dict = al.to_dict()
+            al_dict['codigo_equipo'] = eq.codigo_inventario
+            al_dict['nombre_responsable'] = f"{us.nombre} {us.apellido_paterno}"
+            resultado.append(al_dict)
+            
+        return jsonify({"status": "success", "alertas": resultado}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+#--------------------------------------------------
+
+#--------------------------------------------------
+#endpoint para editar una alerta existente
+@app.route('/alertas/<int:id>', methods=['PUT'])
+@jwt_required() #solo usuarios autenticados
+def update_alerta(id):
+    usuario_auth = Usuario.query.get(get_jwt_identity()) #obtenemos el id del usuario
+    
+    #solo los administradores y técnicos pueden editar las alertas
+    if usuario_auth.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos"}), 403
+
+    alerta = Alerta.query.get(id) #obtenemos la alerta
+    
+    #verificamos que la alerta exista
+    if not alerta:
+        return jsonify({"status": "error", "message": "Alerta no encontrada"}), 404
+
+    data = request.json #obtenemos los datos de la alerta
+    try:
+        if 'titulo' in data: alerta.titulo = data['titulo']
+        if 'descripcion' in data: alerta.descripcion = data['descripcion']
+        if 'estatus' in data: alerta.estatus = data['estatus']
+        if 'id_usuario' in data: alerta.id_usuario = data['id_usuario']
+        if 'fecha_programada' in data: 
+            alerta.fecha_programada = datetime.strptime(data['fecha_programada'], '%Y-%m-%d').date()
+            
+        db.session.commit() #confirmamos la transaccion
+        return jsonify({"status": "success", "message": "Alerta actualizada", "alerta": alerta.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback() #deshacemos los cambios si hay error
+        return jsonify({"status": "error", "message": str(e)}), 500
+#--------------------------------------------------
+
+#--------------------------------------------------
+#endpoint para eliminar una alerta (exclusivo para admin)
+@app.route('/alertas/<int:id>', methods=['DELETE'])
+@jwt_required() #solo usuarios autenticados
+def delete_alerta(id):
+    usuario_auth = Usuario.query.get(get_jwt_identity()) #obtenemos el id del usuario
+    
+    #solo los administradores pueden eliminar las alertas
+    if usuario_auth.rol != 'Administrador':
+        return jsonify({"status": "error", "message": "Solo el administrador puede eliminar alertas"}), 403
+
+    alerta = Alerta.query.get(id) #obtenemos la alerta
+    
+    #verificamos que la alerta exista
+    if not alerta:
+        return jsonify({"status": "error", "message": "Alerta no encontrada"}), 404
+
+    try:
+        db.session.delete(alerta) #eliminamos la alerta
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Alerta eliminada correctamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#------------------------------------------------------------------------------
+
+#--------------------------------------------------------
+#función para verificar las alertas pendientes y enviar correos 
+def verificar_alertas_programadas():
+    """Lógica central para procesar alertas (2 días antes)"""
+    with app.app_context():
+        try:
+            hoy = (datetime.utcnow() + timedelta(hours=-6)).date()
+            #obtenemos alertas pendientes junto con los datos del usuario y equipo
+            query = db.session.query(Alerta, Usuario, Equipo)\
+                .join(Usuario, Alerta.id_usuario == Usuario.id_usuario)\
+                .join(Equipo, Alerta.id_equipo == Equipo.id_equipo)\
+                .filter(Alerta.estatus == 'Pendiente')
+            
+            alertas = query.all()
+            count = 0
+            
+            if not alertas:
+                return 0
+
+            #iniciamos conexión SMTP
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            
+            for al, user, eq in alertas:
+                fecha_disparo = al.fecha_programada - timedelta(days=2)
+                
+                if hoy >= fecha_disparo:
+                    #redactamos el correo con MIMEText
+                    cuerpo = (f"Hola {user.nombre},\n\n"
+                             f"Esta es una notificacion automatica de ExperTrack.\n"
+                             f"Tienes una actividad programada para el equipo: {eq.codigo_inventario} ({eq.marca} {eq.modelo}).\n\n"
+                             f"Detalles de la alerta:\n"
+                             f"- Titulo: {al.titulo}\n"
+                             f"- Descripcion: {al.descripcion}\n"
+                             f"- Fecha Programada: {al.fecha_programada}\n\n"
+                             f"Por favor, toma las medidas necesarias.\n\n"
+                             f"Atentamente,\nSistema ExperTrack")
+                    
+                    msg = MIMEText(cuerpo)
+                    msg['Subject'] = f"ALERTA PREVENTIVA: {al.titulo}"
+                    msg['From'] = SMTP_USER
+                    msg['To'] = user.correo
+                    
+                    #enviamos
+                    server.sendmail(SMTP_USER, user.correo, msg.as_string())
+                    
+                    #marcamos como enviada
+                    al.estatus = 'Enviada'
+                    count += 1
+                    print(f">>> Alerta enviada a {user.correo}")
+
+            server.quit() #cerramos la conexion
+            
+            #si se envio al menos una alerta, confirmamos la transaccion
+            if count > 0:
+                db.session.commit()
+            return count
+            
+        except Exception as e:
+            print(f"Error en verificacion de alertas: {e}")
+            return 0
+#--------------------------------------------------------
+
+#----------------------------------------------------------------
+#endpoint para verificacion manual desde el frontend
+@app.route('/alertas/verificar_manual', methods=['POST'])
+@jwt_required() #solo usuarios autenticados
+def trigger_verificacion_alertas():
+    #solo permitimos a técnicos o admins disparar esto
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No autorizado"}), 403
+    
+    procesadas = verificar_alertas_programadas() #obtenemos las alertas pendientes
+    return jsonify({
+        "status": "success", 
+        "message": f"Verificación completada. Se enviaron {procesadas} alertas.",
+        "enviadas": procesadas
+    }), 200
+
+#------------------------------------------------------------------------------
+#inicializacion de servicios
+#------------------------------------------------------------------------------
 with app.app_context():
     try:
+        #1. Sincronizar hechos con Prolog
         sincronizar_hechos_prolog()
+        
+        #2. Iniciar el planificador de tareas automático (30 minutos)
+        if not scheduler.running:
+            #agregamos la tarea recurrente
+            scheduler.add_job(
+                id='job_alertas_30min', 
+                func=verificar_alertas_programadas, 
+                trigger='interval', 
+                minutes=30
+            )
+            scheduler.start()
+            print(">>> Scheduler activo: Revisión de alertas cada 30 minutos.")
+            
     except Exception as e:
-        print(f"Error en sincronización inicial: {e}")
+        print(f"Error en el arranque: {e}")
 
 #------------------------------------------------------------------------------
 
