@@ -1396,6 +1396,20 @@ def create_categoria_hecho():
     except Exception as e:
         db.session.rollback() #deshacemos los cambios si hay error
         return jsonify({"status": "error", "message": "Error al registrar categoría (posible nombre duplicado)"}), 500
+
+#------------------------------------------------------------------------------
+#endpoint para obtener todas las categorias de diagnostico
+@app.route('/categorias_hechos', methods=['GET'])
+@jwt_required() #solo usuarios autenticados
+def get_categorias_hechos():
+    try:
+        categorias = CategoriaHecho.query.all()
+        return jsonify({
+            "status": "success",
+            "categorias": [c.to_dict() for c in categorias]
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error al obtener categorías: {str(e)}"}), 500
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
