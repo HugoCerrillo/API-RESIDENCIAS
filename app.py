@@ -676,35 +676,6 @@ def diagnosticar():
         return jsonify({"status": "error", "mensaje": str(e)}), 500
 #----------------------------------------------
 
-#----------------------------------------------
-#endpoint para obtener los sintomas de la bd (bd extra)
-@app.route('/sintomas', methods=['GET'])
-@jwt_required() #solo usuarios autenticados
-def get_sintomas():
-    try:
-        #recibimos el tipo desde los parametros de la URL: /api/sintomas?tipo=PC
-        tipo = request.args.get('tipo')
-        
-        query = SintomaHecho.query #consulta a la tabla SintomaHecho
-        
-        if tipo:
-            #hacemos un JOIN con la tabla de fallas (FallaHecho) para filtrar solo los síntomas
-            #que tengan al menos una falla registrada para ese tipo de equipo (PC o Laptop)
-            query = query.join(FallaHecho).filter(FallaHecho.tipo_equipo == tipo).distinct()
-        
-        sintomas = query.all() #obtenemos todos los sintomas
-        
-        return jsonify({
-            "status": "success",
-            "sintomas": [s.to_dict() for s in sintomas]
-        }), 200
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Error al obtener síntomas: {str(e)}"
-        }), 500
-#----------------------------------------------------
-
 #------------------------------------------------------------------------------
 #---- Endpoints para Modulo de Mantenimiento Preventivo/Correctivo-------------
 
@@ -1326,41 +1297,68 @@ def export_expediente_pdf(id):
 
 #------------------------------------------------------------------------------
 
-#---- UTILIDADES PARA SINCRONIZACIÓN CON PROLOG ------------------------------
-#------------------------------------------------------------------------------
 
+#----------------------------------------------
+#endpoint para obtener los sintomas de la bd (bd extra)
+@app.route('/sintomas', methods=['GET'])
+@jwt_required() #solo usuarios autenticados
+def get_sintomas():
+    try:
+        #recibimos el tipo desde los parametros de la URL: /api/sintomas?tipo=PC
+        tipo = request.args.get('tipo')
+        
+        query = SintomaHecho.query #consulta a la tabla SintomaHecho
+        
+        if tipo:
+            #hacemos un JOIN con la tabla de fallas (FallaHecho) para filtrar solo los síntomas
+            #que tengan al menos una falla registrada para ese tipo de equipo (PC o Laptop)
+            query = query.join(FallaHecho).filter(FallaHecho.tipo_equipo == tipo).distinct()
+        
+        sintomas = query.all() #obtenemos todos los sintomas
+        
+        return jsonify({
+            "status": "success",
+            "sintomas": [s.to_dict() for s in sintomas]
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error al obtener síntomas: {str(e)}"
+        }), 500
+#----------------------------------------------------
+
+#----------------------------------------------------
+#endpoint para sincronizar la base de datos con prolog
 def sincronizar_hechos_prolog():
     """Consulta la base de datos y regenera el archivo hechos.pl para Prolog"""
     try:
-        fallas = FallaHecho.query.all()
+        fallas = FallaHecho.query.all() #consulta a la tabla de fallas en la bd
         
         lines = [
             "% --- hechos.pl: GENERADO AUTOMATICAMENTE DESDE LA BASE DE DATOS ---",
             "% No editar este archivo manualmente.",
             f"% Ultima actualizacion: {timedelta(hours=-6) + datetime.utcnow()}", 
             "\n"
-        ]
+        ] #lista de lineas que se van a escribir en el archivo hechos.pl
         
         for f in fallas:
-            # Escapar comillas simples duplicándolas para Prolog
+            #escapar comillas simples duplicandolas para Prolog
             diag = f.diagnostico.replace("'", "''")
             rec = f.recomendacion.replace("'", "''")
             pregunta = f.pregunta_pista.replace("'", "''")
             
-            # Generar líneas de hechos
+            #generar lineas de hechos
             lines.append(f"falla_info({f.id}, '{f.tipo_equipo}', '{diag}', '{rec}').")
-            # f.sintoma.clave generalmente no lleva comillas si es un atomo, 
-            # pero por seguridad la ponemos o validamos el formato
             sintoma_clave = f.sintoma.clave if f.sintoma else "sintoma_desconocido"
             lines.append(f"condicion({f.id}, {sintoma_clave}, '{pregunta}').")
         
-        # Escribir el archivo
+        #escribir el archivo
         with open(path_hechos, "w", encoding="utf-8") as file:
             file.write("\n".join(lines))
             
-        # Recargar el motor de Prolog para que reconozca los nuevos hechos
+        #recargar el motor de Prolog para que reconozca los nuevos hechos
         prolog.consult(path_reglas)
-        print(">>> Sincronización con Prolog exitosa.")
+        print(">>> Sincronización con Prolog exitosa.") #imprimimos en consola que se sincronizo correctamente
         return True
     except Exception as e:
         print(f">>> Error sincronizando con Prolog: {str(e)}")
@@ -1369,10 +1367,7 @@ def sincronizar_hechos_prolog():
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-#---- Endpoints para Gestión de Base de Datos de Hechos (Sistema Experto) -----
-
-#------------------------------------------------------------------------------
-#endpoint para registrar nuevas categorías
+#endpoint para registrar nuevas categorías (para los hechos)
 @app.route('/categorias_hechos', methods=['POST'])
 @jwt_required()
 def create_categoria_hecho():
@@ -1403,9 +1398,10 @@ def create_categoria_hecho():
         return jsonify({"status": "error", "message": "Error al registrar categoría (posible nombre duplicado)"}), 500
 #------------------------------------------------------------------------------
 
-#endpoint para registrar nuevos síntomas iniciales
+#------------------------------------------------------------------------------
+#endpoint para registrar nuevos sintomas iniciales
 @app.route('/sintomas_hechos', methods=['POST'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
 def create_sintoma_hecho():
     usuario_id = get_jwt_identity() #obtenemos el id del usuario
     usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
@@ -1415,30 +1411,69 @@ def create_sintoma_hecho():
         return jsonify({"status": "error", "message": "Solo los técnicos tienen permisos para alimentar la base de conocimientos"}), 403
         
     data = request.json #obtenemos los datos en json
-    clave = data.get('clave') #obtenemos la clave del síntoma
+    
+    # Datos del síntoma
+    clave = data.get('clave')
     descripcion = data.get('descripcion')
     
-    if not clave or not descripcion:
-        return jsonify({"status": "error", "message": "Clave y descripción son requeridas"}), 400
+    # Datos de la falla obligatoria (para evitar síntomas huérfanos)
+    tipo_equipo = data.get('tipo_equipo')
+    categoria_id = data.get('categoria_id')
+    pregunta_pista = data.get('pregunta_pista')
+    diagnostico = data.get('diagnostico')
+    recomendacion = data.get('recomendacion')
+    
+    #validamos que todos los campos del sintoma y la falla esten presentes
+    campos_requeridos = [clave, descripcion, tipo_equipo, categoria_id, pregunta_pista, diagnostico, recomendacion]
+    if not all(campos_requeridos):
+        return jsonify({
+            "status": "error", 
+            "message": "Para registrar un sintoma inicial, es obligatorio incluir los datos de su primera falla asociada (tipo_equipo, categoria_id, etc.)"
+        }), 400
         
+    #verificamos que la categoria exista    
+    if tipo_equipo not in ['PC', 'Laptop']:
+        return jsonify({"status": "error", "message": "El tipo_equipo de la falla debe ser 'PC' o 'Laptop'"}), 400
+
     try:
+        #iniciamos transaccion: primero el sintoma
         nuevo_sintoma = SintomaHecho(clave=clave, descripcion=descripcion)
         db.session.add(nuevo_sintoma)
-        db.session.commit()
+        db.session.flush() # flush para obtener el ID del sintoma sin confirmar la transaccion aun
+
+        #creamos la falla ligada al nuevo sintoma
+        nueva_falla = FallaHecho(
+            tipo_equipo=tipo_equipo,
+            sintoma_id=nuevo_sintoma.id,
+            categoria_id=categoria_id,
+            pregunta_pista=pregunta_pista,
+            diagnostico=diagnostico,
+            recomendacion=recomendacion
+        )
+        
+        db.session.add(nueva_falla)
+        db.session.commit() #confirmamos ambos
+        
+        #sincronizamos con prolog
+        sincronizar_hechos_prolog()
+        
         return jsonify({
             "status": "success",
-            "message": "Síntoma inicial registrado correctamente",
-            "sintoma": nuevo_sintoma.to_dict()
+            "message": "Síntoma inicial y su falla asociada registrados y sincronizados correctamente",
+            "sintoma": nuevo_sintoma.to_dict(),
+            "falla_inicial": nueva_falla.to_dict()
         }), 201
+        
     except Exception as e:
         db.session.rollback()
-        return jsonify({"status": "error", "message": "Error al registrar síntoma (posible clave duplicada)"}), 500
+        return jsonify({"status": "error", "message": f"Error al registrar: {str(e)}"}), 500
 
 #------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------
 #endpoint para registrar nuevas fallas
 @app.route('/fallas_hechos', methods=['POST'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
 def create_falla_hecho():
     usuario_id = get_jwt_identity() #obtenemos el id del usuario
     usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
@@ -1464,13 +1499,13 @@ def create_falla_hecho():
         return jsonify({"status": "error", "message": "El tipo_equipo debe ser 'PC' o 'Laptop'"}), 400
 
     try:
-        #verificamos que existan la categoría y el síntoma
-        cat_existe = CategoriaHecho.query.get(categoria_id)
-        sin_existe = SintomaHecho.query.get(sintoma_id)
-        
-        #si no existen, retornamos error
-        if not cat_existe or not sin_existe:
-            return jsonify({"status": "error", "message": "La categoría o el síntoma especificado no existen"}), 404
+        #verificamos que existan la categoría y el sintoma individualmente para dar un error descriptivo
+        if not CategoriaHecho.query.get(categoria_id):
+            return jsonify({"status": "error", "message": f"La categoría con ID {categoria_id} no existe"}), 404
+            
+        #verificamos que el sintoma exista
+        if not SintomaHecho.query.get(sintoma_id):
+            return jsonify({"status": "error", "message": f"El síntoma inicial con ID {sintoma_id} no existe. Toda falla debe estar ligada a un síntoma existente."}), 404
 
         nueva_falla = FallaHecho(
             tipo_equipo=tipo_equipo,
@@ -1484,7 +1519,7 @@ def create_falla_hecho():
         db.session.add(nueva_falla) #agregamos la nueva falla
         db.session.commit() #confirmamos la transaccion
         
-        # Sincronizamos con el archivo físico de Prolog
+        # sincronizamos con el archivo fisico de Prolog
         sincronizar_hechos_prolog()
         
         return jsonify({
@@ -1498,17 +1533,19 @@ def create_falla_hecho():
         return jsonify({"status": "error", "message": str(e)}), 500
 #------------------------------------------------------------------------------
 
-# Endpoint para descargar el archivo hechos.pl (Para presentaciones/backup)
+#------------------------------------------------------------------------------
+#endpoint para descargar el archivo hechos.pl (para presentacion/backup)
 @app.route('/exportar_hechos', methods=['GET'])
-@jwt_required()
+@jwt_required() #solo usuarios autenticados
 def exportar_hechos():
-    usuario_id = get_jwt_identity()
-    usuario = Usuario.query.get(usuario_id)
+    usuario_id = get_jwt_identity() #obtenemos el id del usuario
+    usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     
+    #solo los administradores y técnicos pueden descargar la base de conocimientos
     if usuario.rol not in ['Administrador', 'Técnico']:
         return jsonify({"status": "error", "message": "No tienes permisos para descargar la base de conocimientos"}), 403
         
-    # Forzamos una sincronización antes de descargar para tener lo último
+    #forzamos una sincronizacion antes de descargar para tener lo ultimo en la bd
     sincronizar_hechos_prolog()
     
     try:
@@ -1517,18 +1554,20 @@ def exportar_hechos():
             as_attachment=True,
             download_name='hechos.pl',
             mimetype='text/plain'
-        )
+        ) #retornamos el archivo hechos.pl
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error al descargar: {str(e)}"}), 500
 
 #------------------------------------------------------------------------------
 
-# Sincronizamos hechos al arrancar (util para deploys de AWS EC2 y servidores WSGI como Gunicorn)
+#sincronizamos hechos al arrancar el servidor
 with app.app_context():
     try:
         sincronizar_hechos_prolog()
     except Exception as e:
         print(f"Error en sincronización inicial: {e}")
+
+#------------------------------------------------------------------------------
 
 if __name__ == '__main__':    
     app.run(host='0.0.0.0', port=5000, debug=True)
