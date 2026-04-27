@@ -1534,6 +1534,45 @@ def create_falla_hecho():
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
+#endpoint para obtener todas las fallas registradas
+@app.route('/fallas_hechos', methods=['GET'])
+@jwt_required() #solo usuarios autenticados
+def get_fallas_hechos():
+    try:
+        # Filtros opcionales
+        tipo = request.args.get('tipo')
+        sintoma_id = request.args.get('sintoma_id')
+        categoria_id = request.args.get('categoria_id')
+        
+        query = FallaHecho.query
+        
+        if tipo:
+            query = query.filter(FallaHecho.tipo_equipo == tipo)
+        if sintoma_id:
+            query = query.filter(FallaHecho.sintoma_id == sintoma_id)
+        if categoria_id:
+            query = query.filter(FallaHecho.categoria_id == categoria_id)
+            
+        fallas = query.all()
+        
+        # Construimos una respuesta enriquecida para el frontend
+        resultado = []
+        for f in fallas:
+            f_dict = f.to_dict()
+            # Agregamos nombres descriptivos gracias a las relaciones del modelo
+            f_dict['sintoma_descripcion'] = f.sintoma.descripcion if f.sintoma else "N/A"
+            f_dict['categoria_nombre'] = f.categoria.nombre if f.categoria else "N/A"
+            resultado.append(f_dict)
+            
+        return jsonify({
+            "status": "success",
+            "total": len(resultado),
+            "fallas": resultado
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error al obtener fallas: {str(e)}"}), 500
+#------------------------------------------------------------------------------
+
 #endpoint para descargar el archivo hechos.pl (para presentacion/backup)
 @app.route('/exportar_hechos', methods=['GET'])
 @jwt_required() #solo usuarios autenticados
