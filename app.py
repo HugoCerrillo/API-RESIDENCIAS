@@ -1296,6 +1296,126 @@ def export_expediente_pdf(id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 #------------------------------------------------------------------------------
+# CLASE PARA REPORTE DE INVENTARIO GENERAL
+#------------------------------------------------------------------------------
+class PDF_Inventario(FPDF):
+    def header(self):
+        # 1. Logos institucionales
+        try:
+            sep_path = os.path.join(base_path, 'static', 'logos', 'sep.png')
+            tecnm_path = os.path.join(base_path, 'static', 'logos', 'tecnm.png')
+            itl_path = os.path.join(base_path, 'static', 'logos', 'itl.png')
+            logo_path = os.path.join(base_path, 'static', 'logos', 'expertrack.png')
+            
+            self.image(sep_path, 10, 8, 35)
+            self.image(tecnm_path, 50, 8, 25)
+            self.image(itl_path, 80, 8, 25)
+            self.image(logo_path, 170, 8, 30)
+        except Exception as e:
+            print(f"Error cargando logos en Inventario: {e}")
+
+        self.ln(30)
+        self.set_font('Helvetica', 'B', 16)
+        self.set_text_color(33, 37, 41)
+        self.cell(0, 10, 'INVENTARIO GENERAL DE EQUIPO TECNOLOGICO', 0, 1, 'C')
+        self.set_font('Helvetica', '', 10)
+        self.cell(0, 5, 'ExperTrack - Sistema de Control de Activos', 0, 1, 'C')
+        self.ln(5)
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Helvetica', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
+        self.cell(60, 10, f'Generado el: {fecha_gen}', 0, 0, 'L')
+        self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
+        self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
+
+# Endpoint para generar el Inventario en PDF
+@app.route('/reporte_inventario_pdf', methods=['GET'])
+@jwt_required()
+def export_inventario_pdf():
+    try:
+        # 1. Verificar permisos y obtener datos del generador
+        usuario_id = get_jwt_identity()
+        usuario_gen = Usuario.query.get(usuario_id)
+        if usuario_gen.rol not in ['Administrador', 'Técnico']:
+            return jsonify({"status": "error", "message": "No tienes permisos para generar este reporte"}), 403
+
+        # 2. Obtener todos los equipos
+        equipos = Equipo.query.order_by(Equipo.codigo_inventario).all()
+
+        # 3. Crear PDF
+        pdf = PDF_Inventario()
+        pdf.alias_nb_pages()
+        pdf.add_page()
+        
+        # Datos del generador en el cuerpo
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.set_text_color(50, 50, 50)
+        pdf.cell(0, 7, f"Reporte generado por: {usuario_gen.nombre} {usuario_gen.apellido_paterno} ({usuario_gen.rol})", 0, 1, 'L')
+        pdf.ln(5)
+
+        # Encabezados de tabla
+        pdf.set_fill_color(80, 75, 56) # Color institucional ExperTrack
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font('Helvetica', 'B', 9)
+        
+        pdf.cell(35, 10, 'Cod. Inventario', 1, 0, 'C', fill=True)
+        pdf.cell(25, 10, 'Tipo', 1, 0, 'C', fill=True)
+        pdf.cell(50, 10, 'Marca / Modelo', 1, 0, 'C', fill=True)
+        pdf.cell(50, 10, 'Area / Ubicacion', 1, 0, 'C', fill=True)
+        pdf.cell(30, 10, 'Estatus', 1, 1, 'C', fill=True)
+
+        # Cuerpo de la tabla
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font('Helvetica', '', 8)
+        
+        for e in equipos:
+            marca_modelo = f"{e.marca or ''} {e.modelo or ''}"
+            area_ubic = e.area or "N/A"
+            
+            # Calculamos altura dinamica
+            lineas_marca = pdf.multi_cell(50, 6, marca_modelo, split_only=True)
+            lineas_area = pdf.multi_cell(50, 6, area_ubic, split_only=True)
+            max_lineas = max(len(lineas_marca), len(lineas_area))
+            h = max_lineas * 6
+            if h < 8: h = 8
+
+            pdf.cell(35, h, e.codigo_inventario or "N/A", 1, 0, 'C')
+            pdf.cell(25, h, e.tipo_equipo or "N/A", 1, 0, 'C')
+            
+            # Marca/Modelo
+            curr_x, curr_y = pdf.get_x(), pdf.get_y()
+            pdf.multi_cell(50, h/len(lineas_marca), marca_modelo, 1, 'C')
+            pdf.set_xy(curr_x + 50, curr_y)
+            
+            # Area
+            curr_x, curr_y = pdf.get_x(), pdf.get_y()
+            pdf.multi_cell(50, h/len(lineas_area), area_ubic, 1, 'C')
+            pdf.set_xy(curr_x + 50, curr_y)
+            
+            pdf.cell(30, h, e.estado_operativo or "N/A", 1, 1, 'C')
+
+        # 4. Salida binaria
+        pdf_bytes = pdf.output()
+        buffer = io.BytesIO(pdf_bytes)
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'Inventario_ExperTrack_{datetime.now().strftime("%Y%m%d")}.pdf'
+        )
+
+    except Exception as e:
+        print(f"Error reporte inventario: {e}")
+        return jsonify({"status": "error", "message": f"Error interno: {str(e)}"}), 500
+
+#------------------------------------------------------------------------------
 
 
 #----------------------------------------------
