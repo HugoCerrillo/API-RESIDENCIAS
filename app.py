@@ -1951,6 +1951,7 @@ def verificar_alertas_programadas():
             return 0
 #--------------------------------------------------------
 
+
 #----------------------------------------------------------------
 #endpoint para verificacion manual desde el frontend
 @app.route('/alertas/verificar_manual', methods=['POST'])
@@ -1969,6 +1970,111 @@ def trigger_verificacion_alertas():
     }), 200
 
 #------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+#---- Endpoint para Dashboard
+#------------------------------------------------------------------------------
+
+@app.route('/dashboard/stats', methods=['GET'])
+@jwt_required() #solo usuarios autenticados
+def get_dashboard_stats():    
+    usuario_id_auth = get_jwt_identity() #obtenemos el id del usuario
+    usuario_auth = Usuario.query.get(usuario_id_auth) #obtenemos el usuario
+    
+    #verificamos que el usuario exista
+    if not usuario_auth:
+        return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
+
+    try:
+        #1. NIVEL ADMINISTRATIVO: Gráficas y proactividad
+        if usuario_auth.rol == 'Administrador':
+            #distribucion de estados
+            stats_equipos = db.session.query(
+                Equipo.estado_operativo, func.count(Equipo.id_equipo)
+            ).group_by(Equipo.estado_operativo).all()
+            
+            #frecuencia de fallas reportadas
+            total_eventos = Evento.query.count()
+            eventos_validados = Evento.query.filter_by(validado=True).count()
+            
+            #indice de generación de alertas (Proactividad)
+            total_alertas = Alerta.query.count()
+            alertas_enviadas = Alerta.query.filter_by(estatus='Enviada').count()
+            
+            return jsonify({
+                "status": "success",
+                "rol": "Administrador",
+                "data": {
+                    "distribucion_estados": dict(stats_equipos),
+                    "frecuencia_fallas": {
+                        "total": total_eventos,
+                        "validados": eventos_validados,
+                        "pendientes": total_eventos - eventos_validados
+                    },
+                    "indice_proactividad": {
+                        "total_alertas": total_alertas,
+                        "enviadas": alertas_enviadas,
+                        "pendientes": total_alertas - alertas_enviadas
+                    },
+                    "resumen_general": {
+                        "total_usuarios": Usuario.query.count(),
+                        "total_equipos": Equipo.query.count()
+                    }
+                }
+            }), 200
+
+        #2. NIVEL TÉCNICO: Diagnósticos y sugerencias
+        elif usuario_auth.rol == 'Técnico':
+            #Listado prioritario de diagnosticos pendientes de validacion
+            #unimos con Equipo para mostrar datos relevantes en el dashboard
+            pendientes = db.session.query(Evento, Equipo).join(
+                Equipo, Evento.id_equipo == Equipo.id_equipo
+            ).filter(Evento.validado == False).order_by(Evento.fecha_creacion.desc()).limit(10).all()
+            
+            #resumen de sugerencias preventivas (Alertas enviadas recientemente)
+            recientes = Alerta.query.order_by(Alerta.id_alerta.desc()).limit(5).all()
+            
+            return jsonify({
+                "status": "success",
+                "rol": "Técnico",
+                "data": {
+                    "diagnosticos_pendientes": [
+                        {
+                            "id_evento": ev.id_evento,
+                            "falla": ev.falla_reportada,
+                            "equipo": eq.codigo_inventario,
+                            "fecha": ev.fecha_creacion.isoformat()
+                        } for ev, eq in pendientes
+                    ],
+                    "sugerencias_recientes": [a.to_dict() for a in recientes]
+                }
+            }), 200
+
+        #3. NIVEL USUARIO SOLICITANTE: Sus reportes y alertas vinculadas
+        else:
+            #estatus de reportes
+            mis_reportes = Evento.query.filter_by(id_usuario=usuario_id_auth).order_by(Evento.fecha_creacion.desc()).all()
+            
+            #alertas de recomendacion vinculadas a sus equipos
+            mis_equipos_ids = [e.id_equipo for e in usuario_auth.equipos]
+            mis_alertas = Alerta.query.filter(Alerta.id_equipo.in_(mis_equipos_ids)).order_by(Alerta.fecha_programada.asc()).all()
+            
+            return jsonify({
+                "status": "success",
+                "rol": "Solicitante",
+                "data": {
+                    "mis_reportes": [r.to_dict() for r in mis_reportes],
+                    "notificaciones_preventivas": [a.to_dict() for a in mis_alertas]
+                }
+            }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+#------------------------------------------------------------------------------
+
+
+
 #inicializacion de servicios
 #------------------------------------------------------------------------------
 with app.app_context():
