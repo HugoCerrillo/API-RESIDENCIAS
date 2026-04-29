@@ -1972,9 +1972,7 @@ def trigger_verificacion_alertas():
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-#---- Endpoint para Dashboard
-#------------------------------------------------------------------------------
-
+#endpoint para Dashboard
 @app.route('/dashboard/stats', methods=['GET'])
 @jwt_required() #solo usuarios autenticados
 def get_dashboard_stats():    
@@ -1986,7 +1984,7 @@ def get_dashboard_stats():
         return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
 
     try:
-        #1. NIVEL ADMINISTRATIVO: Gráficas y proactividad
+        #1. administrador: graficas y proactividad
         if usuario_auth.rol == 'Administrador':
             #distribucion de estados
             stats_equipos = db.session.query(
@@ -2023,15 +2021,15 @@ def get_dashboard_stats():
                 }
             }), 200
 
-        #2. NIVEL TÉCNICO: Diagnósticos y sugerencias
+        #2. tecnico: diagnosticos y sugerencias
         elif usuario_auth.rol == 'Técnico':
-            #Listado prioritario de diagnosticos pendientes de validacion
+            #listado prioritario de diagnosticos pendientes de validacion
             #unimos con Equipo para mostrar datos relevantes en el dashboard
             pendientes = db.session.query(Evento, Equipo).join(
                 Equipo, Evento.id_equipo == Equipo.id_equipo
             ).filter(Evento.validado == False).order_by(Evento.fecha_creacion.desc()).limit(10).all()
             
-            #resumen de sugerencias preventivas (Alertas enviadas recientemente)
+            #resumen de alertas mas recientes
             recientes = Alerta.query.order_by(Alerta.id_alerta.desc()).limit(5).all()
             
             return jsonify({
@@ -2050,7 +2048,7 @@ def get_dashboard_stats():
                 }
             }), 200
 
-        #3. NIVEL USUARIO SOLICITANTE: Sus reportes y alertas vinculadas
+        #3. usuario solicitante: sus reportes y alertas vinculadas
         else:
             #estatus de reportes
             mis_reportes = Evento.query.filter_by(id_usuario=usuario_id_auth).order_by(Evento.fecha_creacion.desc()).all()
@@ -2074,12 +2072,11 @@ def get_dashboard_stats():
 #------------------------------------------------------------------------------
 
 
-
 #inicializacion de servicios
 #------------------------------------------------------------------------------
 with app.app_context():
     try:
-        #1. Sincronizar hechos con Prolog
+        #1. sincronizar hechos con Prolog
         sincronizar_hechos_prolog()
         
         #2. Iniciar el planificador de tareas automático (30 minutos)
