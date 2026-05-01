@@ -651,7 +651,7 @@ class PDF_Inventario(FPDF):
         self.ln(35) 
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(33, 37, 41)
-        self.cell(0, 10, 'INVENTARIO GENERAL DE EQUIPO TECNOLOGICO', 0, 1, 'C')
+        self.cell(0, 10, 'INVENTARIO GENERAL DE EQUIPO TECNOLÓGICO', 0, 1, 'C')
         self.set_font('Helvetica', '', 10)
         self.cell(0, 5, 'ExperTrack - Sistema de Control de Activos', 0, 1, 'C')
         self.ln(5)
@@ -665,7 +665,7 @@ class PDF_Inventario(FPDF):
         fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
         self.cell(60, 10, f'Generado el: {fecha_gen}', 0, 0, 'L')
         self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
-        self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
+        self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
@@ -699,11 +699,11 @@ def export_inventario_pdf():
         pdf.set_text_color(255, 255, 255)
         pdf.set_font('Helvetica', 'B', 9)
         
-        pdf.cell(35, 10, 'Cod. Inventario', 1, 0, 'C', fill=True)
+        pdf.cell(35, 10, 'Cód. Inventario', 1, 0, 'C', fill=True)
         pdf.cell(25, 10, 'Tipo', 1, 0, 'C', fill=True)
         pdf.cell(50, 10, 'Marca / Modelo', 1, 0, 'C', fill=True)
-        pdf.cell(50, 10, 'Area / Ubicacion', 1, 0, 'C', fill=True)
-        pdf.cell(30, 10, 'Estatus', 1, 1, 'C', fill=True)
+        pdf.cell(50, 10, 'Área / Ubicación', 1, 0, 'C', fill=True)
+        pdf.cell(30, 10, 'Estado', 1, 1, 'C', fill=True)
 
         #cuerpo de la tabla
         pdf.set_text_color(0, 0, 0)
@@ -1277,7 +1277,7 @@ class PDF_Expediente(FPDF):
         #2. titulo del reporte
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(33, 37, 41)
-        self.cell(0, 10, 'EXPEDIENTE TECNICO DE EQUIPO', 0, 1, 'C')
+        self.cell(0, 10, 'EXPEDIENTE TÉCNICO DE EQUIPO', 0, 1, 'C')
         self.set_font('Helvetica', '', 10)
         self.cell(0, 5, 'Sistema Gestor de Mantenimiento ExperTrack', 0, 1, 'C')
         self.ln(10)
@@ -1303,7 +1303,7 @@ class PDF_Expediente(FPDF):
         self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
         
         #paginacion
-        self.cell(60, 10, f'Pagina {self.page_no()}/{{nb}}', 0, 0, 'R')
+        self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
@@ -1333,7 +1333,7 @@ def export_expediente_pdf(id):
         #seccion de identificacion del equipo
         pdf.set_font('Helvetica', 'B', 12)
         pdf.set_fill_color(240, 240, 240)
-        pdf.cell(0, 8, '  IDENTIFICACION DEL EQUIPO', 0, 1, 'L', fill=True)
+        pdf.cell(0, 8, '  IDENTIFICACIÓN DEL EQUIPO', 0, 1, 'L', fill=True)
         pdf.ln(2)
         
         pdf.set_font('Helvetica', '', 10)
@@ -1341,10 +1341,10 @@ def export_expediente_pdf(id):
         
         #datos del equipo
         datos_equipo = [
-            ('Codigo Inventario:', equipo.codigo_inventario or "N/A", 'Marca:', equipo.marca or "N/A"),
+            ('Código Inventario:', equipo.codigo_inventario or "N/A", 'Marca:', equipo.marca or "N/A"),
             ('No. de Serie:', equipo.numero_serie or "N/A", 'Modelo:', equipo.modelo or "N/A"),
-            ('Tipo de Equipo:', equipo.tipo_equipo or "N/A", 'Area:', equipo.area or "N/A"),
-            ('Ubicacion:', equipo.ubicacion or "N/A", 'Estatus:', equipo.estado_operativo or "N/A")
+            ('Tipo de Equipo:', equipo.tipo_equipo or "N/A", 'Área:', equipo.area or "N/A"),
+            ('Ubicación:', equipo.ubicacion or "N/A", 'Estado:', equipo.estado_operativo or "N/A")
         ] 
         
         #iteramos sobre los datos del equipo
@@ -1359,7 +1359,7 @@ def export_expediente_pdf(id):
 
         #seccion de especificaciones tecnicas
         if spec:
-            pdf.set_font('Helvetica', 'B', 12); pdf.cell(0, 8, '  ESPECIFICACIONES TECNICAS ACTUALES', 0, 1, 'L', fill=True)
+            pdf.set_font('Helvetica', 'B', 12); pdf.cell(0, 8, '  ESPECIFICACIONES TÉCNICAS ACTUALES', 0, 1, 'L', fill=True)
             pdf.ln(2)
             
             specs_list = [
@@ -1381,32 +1381,39 @@ def export_expediente_pdf(id):
 
         pdf.set_font('Helvetica', 'B', 9); pdf.set_fill_color(220, 220, 220)
         pdf.cell(25, 8, 'Fecha', 1, 0, 'C', fill=True)
-        pdf.cell(40, 8, 'Tecnico', 1, 0, 'C', fill=True)
+        pdf.cell(40, 8, 'Técnico', 1, 0, 'C', fill=True)
         pdf.cell(30, 8, 'Tipo', 1, 0, 'C', fill=True)
-        pdf.cell(95, 8, 'Descripcion del Trabajo / Falla', 1, 1, 'C', fill=True)
+        pdf.cell(95, 8, 'Descripción del Trabajo / Falla', 1, 1, 'C', fill=True)
 
         pdf.set_font('Helvetica', '', 8)
         for ev, tec, mant in historial:
-            desc = mant.descripcion_trabajo if mant else ev.falla_reportada or "Sin descripcion"
+            desc = mant.descripcion_trabajo if mant else ev.falla_reportada or "Sin descripción"
             fecha = ev.fecha_creacion.strftime("%d/%m/%Y")
             nombre_tec = f"{tec.nombre} {tec.apellido_paterno}"
             tipo = mant.tipo if mant else "Evento/Diag"
-            #calculamos cuantas lineas ocupara la descripcion (ancho 95)
-            #usamos split_only para obtener la lista de lineas sin dibujarlas aun
-            lineas_desc = pdf.multi_cell(95, 6, desc, split_only=True)
-            altura_fila = len(lineas_desc) * 6 #interlineado de 6
-            if altura_fila < 8: altura_fila = 8 #altura minima por fila
             
-            #dibujamos las primeras 3 celdas con la altura total calculada
-            #el parametro 0 al final indica que no salte de linea aun
+            # Calculamos cuántas líneas ocupará la descripción (ancho 95)
+            lineas_desc = pdf.multi_cell(95, 6, desc, split_only=True)
+            num_lineas = len(lineas_desc) if len(lineas_desc) > 0 else 1
+            altura_fila = num_lineas * 6 
+            if altura_fila < 8: altura_fila = 8 
+            
+            # Guardamos la posición inicial de la fila para el salto final
+            y_ini = pdf.get_y()
+            
+            # Dibujamos las primeras 3 celdas (altura fija calculada)
+            # El parámetro 0 indica que no salte de línea aún
             pdf.cell(25, altura_fila, fecha, 1, 0, 'C')
             pdf.cell(40, altura_fila, nombre_tec[:22], 1, 0, 'C')
             pdf.cell(30, altura_fila, tipo, 1, 0, 'C')
             
-            #dibujamos la multicelda al final
-            #dividimos la altura_fila entre el numero de lineas para que rellene todo el espacio
-            h_cada_linea = altura_fila / len(lineas_desc)
+            # Dibujamos la multicelda al final
+            h_cada_linea = altura_fila / num_lineas
             pdf.multi_cell(95, h_cada_linea, desc, 1, 'L')        
+            
+            # IMPORTANTE: Forzamos el cursor a la siguiente fila (X=10, Y=y_ini + altura_fila)
+            # Esto evita que los registros se sigan imprimiendo hacia los lados
+            pdf.set_xy(10, y_ini + altura_fila)
 
         #retornamos el pdf
         pdf_bytes = pdf.output()
