@@ -34,8 +34,11 @@ def get_alertas():
             .join(Equipo, Alerta.id_equipo == Equipo.id_equipo)\
             .join(Usuario, Alerta.id_usuario == Usuario.id_usuario)
         
+        # Si no se pide un estatus específico, mostramos solo las Pendientes
         if estatus:
             query = query.filter(Alerta.estatus == estatus)
+        else:
+            query = query.filter(Alerta.estatus == 'Pendiente')
             
         alertas = query.all()
         resultado = []

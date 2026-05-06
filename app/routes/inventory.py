@@ -66,9 +66,12 @@ def get_equipos():
         d = eq.to_dict()
         d['dueño'] = dueño
         
-        # Agregamos la especificación actual para la "Matriz"
+        # Agregamos la especificación actual
         spec = Especificacion.query.filter_by(id_equipo=eq.id_equipo, es_actual=True).first()
         d['especificacion'] = spec.to_dict() if spec else None
+        
+        # Agregamos los periféricos (importante para la matriz)
+        d['perifericos'] = [p.to_dict() for p in eq.perifericos]
         
         lista_equipos.append(d)
         
@@ -111,11 +114,13 @@ def get_equipo(id):
     spec = Especificacion.query.filter_by(id_equipo=id, es_actual=True).first()
     perifericos = Periferico.query.filter_by(id_equipo=id).all()
     
-    data = equipo.to_dict()
-    data['especificacion'] = spec.to_dict() if spec else None
-    data['perifericos'] = [p.to_dict() for p in perifericos]
-    
-    return jsonify({"status": "success", "equipo": data}), 200
+    return jsonify({
+        "status": "success", 
+        "equipo": equipo.to_dict(),
+        "especificacion": spec.to_dict() if spec else None,
+        "perifericos": [p.to_dict() for p in perifericos],
+        "dueño": equipo.propietario.nombre if equipo.propietario else "Desconocido"
+    }), 200
 
 @inventory_bp.route('/equipos/<int:id>/expediente_pdf', methods=['GET'])
 @jwt_required()
