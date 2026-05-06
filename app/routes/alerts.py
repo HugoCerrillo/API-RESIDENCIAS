@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from ..models import db, Alerta, Usuario
+from ..models import db, Alerta, Usuario, Equipo
 from ..services.alert_logic import verificar_alertas_programadas
 from datetime import datetime
 
@@ -28,6 +28,12 @@ def create_alerta():
 @alerts_bp.route('/alertas', methods=['GET'])
 @jwt_required()
 def get_alertas():
+    usuario_id = get_jwt_identity()
+    usuario_auth = Usuario.query.get(usuario_id)
+    
+    if not usuario_auth or usuario_auth.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+
     estatus = request.args.get('estatus')
     try:
         query = db.session.query(Alerta, Equipo, Usuario)\
