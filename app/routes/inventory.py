@@ -66,9 +66,9 @@ def get_equipos():
         d = eq.to_dict()
         d['dueño'] = dueño
         
-        # Agregamos las especificaciones actuales para la "Matriz"
+        # Agregamos la especificación actual para la "Matriz"
         spec = Especificacion.query.filter_by(id_equipo=eq.id_equipo, es_actual=True).first()
-        d['especificaciones'] = spec.to_dict() if spec else None
+        d['especificacion'] = spec.to_dict() if spec else None
         
         lista_equipos.append(d)
         
@@ -112,7 +112,7 @@ def get_equipo(id):
     perifericos = Periferico.query.filter_by(id_equipo=id).all()
     
     data = equipo.to_dict()
-    data['especificaciones'] = spec.to_dict() if spec else None
+    data['especificacion'] = spec.to_dict() if spec else None
     data['perifericos'] = [p.to_dict() for p in perifericos]
     
     return jsonify({"status": "success", "equipo": data}), 200

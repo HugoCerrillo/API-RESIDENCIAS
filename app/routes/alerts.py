@@ -28,8 +28,26 @@ def create_alerta():
 @alerts_bp.route('/alertas', methods=['GET'])
 @jwt_required()
 def get_alertas():
-    alertas = Alerta.query.all()
-    return jsonify({"status": "success", "alertas": [a.to_dict() for a in alertas]}), 200
+    estatus = request.args.get('estatus')
+    try:
+        query = db.session.query(Alerta, Equipo, Usuario)\
+            .join(Equipo, Alerta.id_equipo == Equipo.id_equipo)\
+            .join(Usuario, Alerta.id_usuario == Usuario.id_usuario)
+        
+        if estatus:
+            query = query.filter(Alerta.estatus == estatus)
+            
+        alertas = query.all()
+        resultado = []
+        for al, eq, us in alertas:
+            al_dict = al.to_dict()
+            al_dict['codigo_equipo'] = eq.codigo_inventario
+            al_dict['nombre_responsable'] = f"{us.nombre} {us.apellido_paterno}"
+            resultado.append(al_dict)
+            
+        return jsonify({"status": "success", "alertas": resultado}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @alerts_bp.route('/alertas/verificar_manual', methods=['POST'])
 @jwt_required()
