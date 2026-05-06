@@ -100,7 +100,8 @@ def restablecer_password():
         db.session.commit()
         return jsonify({"status": "success", "message": "Contraseña actualizada correctamente"}), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": "Token inválido o expirado"}), 401
+        print(f">>> Error decodificando token de reset: {e}")
+        return jsonify({"status": "error", "message": f"Token inválido o expirado: {str(e)}"}), 401
 
 @auth_bp.route('/usuarios/<int:id>', methods=['PUT'])
 @jwt_required()
