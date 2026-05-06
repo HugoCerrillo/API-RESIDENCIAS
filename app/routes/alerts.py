@@ -56,7 +56,13 @@ def get_alertas():
             
         return jsonify({"status": "success", "alertas": resultado}), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        import traceback
+        print(traceback.format_exc()) # Esto saldrá en la terminal de la EC2
+        return jsonify({
+            "status": "error", 
+            "message": "Error interno en el servidor",
+            "error_detail": str(e)
+        }), 500
 
 @alerts_bp.route('/alertas/verificar_manual', methods=['POST'])
 @jwt_required()
