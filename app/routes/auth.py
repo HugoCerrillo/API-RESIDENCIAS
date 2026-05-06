@@ -72,10 +72,10 @@ def solicitar_recuperacion():
     usuario = Usuario.query.filter_by(correo=correo).first()
     
     if not usuario:
-        return jsonify({"status": "error", "message": "Si el correo existe, se enviará un enlace."}), 200
+        return jsonify({"status": "error", "message": "El correo no está registrado"}), 404
 
     token = create_access_token(identity=str(usuario.id_usuario))
-    enlace = f"http://localhost:5173/restablecer-password?token={token}"
+    enlace = f"https://exper-track.vercel.app/reset-password?token={token}"
     
     if enviar_correo_recuperacion(correo, enlace):
         return jsonify({"status": "success", "message": "Correo enviado con éxito"}), 200
@@ -116,6 +116,7 @@ def update_usuario(id):
         if 'rol' in data: usuario.rol = data['rol']
         if 'telefono' in data: usuario.telefono = data['telefono']
         if 'correo' in data: usuario.correo = data['correo']
+        if 'estatus' in data: usuario.estatus = data['estatus']
         if 'contraseña' in data and data['contraseña']:
             usuario.contraseña = generate_password_hash(data['contraseña'])
             
