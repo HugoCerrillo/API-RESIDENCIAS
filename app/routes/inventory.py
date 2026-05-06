@@ -116,3 +116,80 @@ def export_expediente_pdf(id):
         return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=f'Expediente_ID_{id}.pdf')
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@inventory_bp.route('/equipos/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_equipo(id):
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos"}), 403
+        
+    equipo = Equipo.query.get(id)
+    if not equipo:
+        return jsonify({"status": "error", "message": "Equipo no encontrado"}), 404
+        
+    data = request.json
+    try:
+        # 1. Datos básicos
+        campos = ['id_usuario', 'marca', 'modelo', 'tipo_equipo', 'numero_serie', 'codigo_inventario', 'area', 'ubicacion', 'estado_operativo', 'en_garantia']
+        for campo in campos:
+            if campo in data: setattr(equipo, campo, data[campo])
+
+        # 2. Lógica de Versionado de Especificaciones
+        if 'especificaciones' in data:
+            new_specs = data['especificaciones']
+            current_spec = Especificacion.query.filter_by(id_equipo=id, es_actual=True).first()
+            
+            should_create = not current_spec
+            if current_spec:
+                for f in ['sistema_operativo', 'procesador', 'ram', 'tipo_ram', 'almacenamiento', 'almacenamiento_tipo']:
+                    if new_specs.get(f) != getattr(current_spec, f):
+                        should_create = True
+                        break
+            
+            if should_create:
+                if current_spec: current_spec.es_actual = False
+                nueva_version = Especificacion(
+                    id_equipo=id,
+                    sistema_operativo=new_specs.get('sistema_operativo'),
+                    procesador=new_specs.get('procesador'),
+                    ram=new_specs.get('ram'),
+                    tipo_ram=new_specs.get('tipo_ram'),
+                    almacenamiento=new_specs.get('almacenamiento'),
+                    almacenamiento_tipo=new_specs.get('almacenamiento_tipo'),
+                    es_actual=True
+                )
+                db.session.add(nueva_version)
+
+        if 'perifericos' in data:
+            Periferico.query.filter_by(id_equipo=id).delete()
+            for p in data['perifericos']:
+                db.session.add(Periferico(
+                    id_equipo=id, tipo=p.get('tipo'), marca=p.get('marca'),
+                    numero_serie=p.get('numero_serie'), id_inventario_interno=p.get('id_inventario_interno')
+                ))
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Equipo actualizado"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@inventory_bp.route('/equipos/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_equipo(id):
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol != 'Administrador':
+        return jsonify({"status": "error", "message": "Solo el administrador puede eliminar"}), 403
+        
+    equipo = Equipo.query.get(id)
+    if not equipo:
+        return jsonify({"status": "error", "message": "No encontrado"}), 404
+        
+    try:
+        db.session.delete(equipo)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Equipo eliminado correctamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500

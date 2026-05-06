@@ -8,27 +8,44 @@ expert_bp = Blueprint('expert', __name__)
 @expert_bp.route('/diagnosticar', methods=['POST'])
 @jwt_required()
 def diagnosticar():
-    data = request.json
-    sintoma = data.get('sintoma')
-    tipo_equipo = data.get('tipo_equipo')
-    
-    # Lógica de Prolog
-    query = f"diagnosticar({sintoma}, '{tipo_equipo}', ID, Diagnostico, Rec, Pista)"
     try:
-        results = list(prolog.query(query))
-        if not results:
-            return jsonify({"status": "error", "message": "No se encontró un diagnóstico"}), 404
-        
-        res = results[0]
-        return jsonify({
-            "status": "success",
-            "id_falla": res['ID'],
-            "diagnostico": res['Diagnostico'],
-            "recomendacion": res['Rec'],
-            "pista": res['Pista']
-        }), 200
+        data = request.json
+        if not data:
+            return jsonify({"status": "error", "mensaje": "No se recibieron datos"}), 400
+
+        tipo = data.get('tipo')
+        sintoma = data.get('sintoma')
+        historial = data.get('historial', [])
+
+        # 1. Limpiamos memoria
+        list(prolog.query("limpiar_memoria"))
+
+        # 2. Inyectamos historial
+        for paso in historial:
+            pregunta = paso['p']
+            respuesta = paso['r']
+            prolog.assertz(f"respuesta('{pregunta}', {respuesta})")
+
+        # 3. Consulta principal
+        query_str = f"siguiente_paso('{tipo}', '{sintoma}', Accion, Valor)"
+        results = list(prolog.query(query_str))
+
+        if results:
+            res = results[0]
+            return jsonify({
+                "status": "success",
+                "accion": str(res['Accion']),
+                "valor": str(res['Valor'])
+            })
+        else:
+            return jsonify({
+                "status": "error", 
+                "mensaje": "El motor de inferencia no devolvió resultados"
+            }), 404
+
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"Error en el diagnóstico: {e}")
+        return jsonify({"status": "error", "mensaje": str(e)}), 500
 
 @expert_bp.route('/sintomas', methods=['GET'])
 @jwt_required()

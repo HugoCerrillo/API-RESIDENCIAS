@@ -3,40 +3,42 @@ from pyswip import Prolog
 from flask import current_app
 from datetime import datetime, timedelta
 from ..models import db, FallaHecho
+from pathlib import Path
 
-# Inicializamos el motor de Prolog
+# Inicializamos el motor de Prolog de forma global
 prolog = Prolog()
 
 def get_prolog_paths():
-    """Obtiene las rutas absolutas de reglas y hechos"""
-    # La carpeta motor_prolog está en la raíz del proyecto
+    """Obtiene las rutas absolutas de reglas y hechos de forma robusta"""
     # current_app.root_path es proyecto/app/
-    base_path = os.path.abspath(os.path.join(current_app.root_path, '..'))
-    path_reglas = os.path.join(base_path, "motor_prolog", "reglas.pl").replace("\\", "/")
-    path_hechos = os.path.join(base_path, "motor_prolog", "hechos.pl").replace("\\", "/")
+    # Queremos subir un nivel para llegar a la raíz donde está motor_prolog
+    root_path = Path(current_app.root_path).parent
+    path_reglas = (root_path / "motor_prolog" / "reglas.pl").as_posix()
+    path_hechos = (root_path / "motor_prolog" / "hechos.pl").as_posix()
     return path_reglas, path_hechos
 
 def inicializar_prolog():
     """Carga las reglas iniciales en el motor"""
     path_reglas, _ = get_prolog_paths()
     try:
+        # Importante: Algunos entornos requieren recargar el motor
         prolog.consult(path_reglas)
-        print(">>> Motor Prolog inicializado correctamente.")
+        print(f">>> Motor Prolog cargado desde: {path_reglas}")
         return True
     except Exception as e:
-        print(f">>> Error al inicializar Prolog: {e}")
+        print(f">>> Error crítico al inicializar Prolog: {e}")
         return False
 
 def sincronizar_hechos_prolog():
-    """Consulta la base de datos y regenera el archivo hechos.pl para Prolog"""
+    """Consulta la base de datos y regenera el archivo hechos.pl"""
     path_reglas, path_hechos = get_prolog_paths()
     try:
         fallas = FallaHecho.query.all()
         
         lines = [
-            "% --- hechos.pl: GENERADO AUTOMATICAMENTE DESDE LA BASE DE DATOS ---",
+            "% --- hechos.pl: GENERADO AUTOMATICAMENTE ---",
             "% No editar este archivo manualmente.",
-            f"% Ultima actualizacion: {datetime.utcnow() + timedelta(hours=-6)}", 
+            f"% Ultima actualizacion: {datetime.utcnow() - timedelta(hours=6)}", 
             "\n"
         ]
         
@@ -53,7 +55,6 @@ def sincronizar_hechos_prolog():
             file.write("\n".join(lines))
             
         prolog.consult(path_reglas)
-        print(">>> Sincronización con Prolog exitosa.")
         return True
     except Exception as e:
         print(f">>> Error sincronizando con Prolog: {str(e)}")

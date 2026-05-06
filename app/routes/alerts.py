@@ -36,3 +36,39 @@ def get_alertas():
 def verificar_manual():
     count = verificar_alertas_programadas()
     return jsonify({"status": "success", "message": f"Se procesaron {count} alertas"}), 200
+
+@alerts_bp.route('/alertas/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_alerta(id):
+    alerta = Alerta.query.get(id)
+    if not alerta:
+        return jsonify({"status": "error", "message": "Alerta no encontrada"}), 404
+        
+    data = request.json
+    try:
+        if 'titulo' in data: alerta.titulo = data['titulo']
+        if 'descripcion' in data: alerta.descripcion = data['descripcion']
+        if 'fecha_programada' in data:
+            alerta.fecha_programada = datetime.strptime(data['fecha_programada'], '%Y-%m-%d').date()
+        if 'estatus' in data: alerta.estatus = data['estatus']
+            
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Alerta actualizada", "alerta": alerta.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@alerts_bp.route('/alertas/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_alerta(id):
+    alerta = Alerta.query.get(id)
+    if not alerta:
+        return jsonify({"status": "error", "message": "Alerta no encontrada"}), 404
+        
+    try:
+        db.session.delete(alerta)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Alerta eliminada"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
