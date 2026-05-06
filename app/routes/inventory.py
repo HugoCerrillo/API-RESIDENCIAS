@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from ..models import db, Equipo, Periferico, Especificacion, Usuario
+from ..models import db, Equipo, Periferico, Especificacion, Usuario, Evento, Mantenimiento
 from ..services.pdf_service import PDF_Inventario
 import io
 from datetime import datetime
@@ -49,8 +49,33 @@ def create_equipo():
 @inventory_bp.route('/equipos', methods=['GET'])
 @jwt_required()
 def get_equipos():
-    equipos = Equipo.query.all()
-    return jsonify({"status": "success", "equipos": [e.to_dict() for e in equipos]}), 200
+    usuario_id = get_jwt_identity()
+    usuario = Usuario.query.get(usuario_id)
+    
+    # Consulta base con join al dueño
+    query = db.session.query(Equipo, Usuario.nombre.label('dueño'))\
+              .join(Usuario, Equipo.id_usuario == Usuario.id_usuario)
+    
+    if usuario.rol == 'Usuario Solicitante':
+        query = query.filter(Equipo.id_usuario == usuario.id_usuario)
+    
+    resultados = query.all()
+    lista_equipos = []
+    
+    for eq, dueño in resultados:
+        d = eq.to_dict()
+        d['dueño'] = dueño
+        
+        # Agregamos las especificaciones actuales para la "Matriz"
+        spec = Especificacion.query.filter_by(id_equipo=eq.id_equipo, es_actual=True).first()
+        d['especificaciones'] = spec.to_dict() if spec else None
+        
+        lista_equipos.append(d)
+        
+    return jsonify({
+        "status": "success",
+        "equipos": lista_equipos
+    }), 200
 
 @inventory_bp.route('/reporte_inventario_pdf', methods=['GET'])
 @jwt_required()

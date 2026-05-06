@@ -5,21 +5,60 @@ from datetime import datetime
 
 technical_record_bp = Blueprint('technical_record', __name__)
 
+from sqlalchemy import func
+
 # --- EVENTOS ---
 @technical_record_bp.route('/eventos', methods=['POST'])
 @jwt_required()
 def create_evento():
+    usuario_id_creador = get_jwt_identity()
+    usuario_creador = Usuario.query.get(usuario_id_creador)
+    
     data = request.json
+    id_equipo = data.get('id_equipo')
+    id_tecnico_asignado = None
+    
     try:
+        # 1. Determinamos el técnico asignado
+        if usuario_creador.rol == 'Técnico':
+            id_tecnico_asignado = usuario_id_creador
+        elif usuario_creador.rol == 'Usuario Solicitante':
+            tecnico_menos_ocupado = db.session.query(Usuario)\
+                .outerjoin(Evento, (Usuario.id_usuario == Evento.id_usuario) & (Evento.validado == False))\
+                .filter(Usuario.rol == 'Técnico')\
+                .group_by(Usuario.id_usuario)\
+                .order_by(func.count(Evento.id_evento).asc(), Usuario.id_usuario.asc())\
+                .first()
+            
+            if not tecnico_menos_ocupado:
+                return jsonify({"status": "error", "message": "No hay técnicos disponibles"}), 500
+            id_tecnico_asignado = tecnico_menos_ocupado.id_usuario
+        else:
+            return jsonify({"status": "error", "message": "Tu rol no permite generar eventos"}), 403
+
+        # 2. Actualizar estado del equipo
+        equipo = Equipo.query.get(id_equipo)
+        if not equipo:
+            return jsonify({"status": "error", "message": "Equipo no existe"}), 404
+        equipo.estado_operativo = 'En Mantenimiento'
+
+        # 3. Crear evento
         nuevo_evento = Evento(
-            id_equipo=data.get('id_equipo'),
-            id_usuario=data.get('id_usuario'),
+            id_equipo=id_equipo,
+            id_usuario=id_tecnico_asignado,
             falla_reportada=data.get('falla_reportada'),
-            estado_fisico=data.get('estado_fisico')
+            estado_fisico=data.get('estado_fisico'),
+            validado=False
         )
         db.session.add(nuevo_evento)
         db.session.commit()
-        return jsonify({"status": "success", "message": "Evento registrado", "evento": nuevo_evento.to_dict()}), 201
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Evento asignado al técnico ID: {id_tecnico_asignado}",
+            "evento": nuevo_evento.to_dict()
+        }), 201
+        
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
