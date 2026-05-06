@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token
+from datetime import datetime, timedelta
 from ..models import db, Usuario
 from ..services.email_service import enviar_correo_recuperacion
 from ..utils.helpers import admin_required
@@ -74,7 +75,7 @@ def solicitar_recuperacion():
     if not usuario:
         return jsonify({"status": "error", "message": "El correo no está registrado"}), 404
 
-    token = create_access_token(identity=str(usuario.id_usuario))
+    token = create_access_token(identity=str(usuario.id_usuario), expires_delta=timedelta(minutes=15))
     enlace = f"https://exper-track.vercel.app/reset-password?token={token}"
     
     if enviar_correo_recuperacion(correo, enlace):
