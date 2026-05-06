@@ -72,12 +72,47 @@ def get_eventos():
 @technical_record_bp.route('/eventos/<int:id>', methods=['PUT'])
 @jwt_required()
 def update_evento(id):
+    usuario_id = get_jwt_identity()
+    usuario = Usuario.query.get(usuario_id)
     evento = Evento.query.get(id)
-    if not evento: return jsonify({"status": "error", "message": "No encontrado"}), 404
+    
+    if not evento:
+        return jsonify({"status": "error", "message": "Evento no encontrado"}), 404
+        
     data = request.json
-    if 'validado' in data: evento.validado = data['validado']
-    db.session.commit()
-    return jsonify({"status": "success", "evento": evento.to_dict()}), 200
+    try:
+        # 1. Lógica para Administrador (Edición total)
+        if usuario.rol == 'Administrador':
+            if 'falla_reportada' in data: evento.falla_reportada = data['falla_reportada']
+            if 'estado_fisico' in data: evento.estado_fisico = data['estado_fisico']
+            if 'validado' in data:
+                evento.validado = data['validado']
+                # Si el admin lo valida, el equipo vuelve a estar Operativo
+                if data['validado'] == True and evento.equipo:
+                    evento.equipo.estado_operativo = 'Operativo'
+                elif data['validado'] == False and evento.equipo:
+                    evento.equipo.estado_operativo = 'En Mantenimiento'
+
+        # 2. Lógica para Técnico (Validación)
+        elif usuario.rol == 'Técnico':
+            if 'validado' in data:
+                # Solo puede validar (pasar de False a True)
+                if evento.validado == False and data['validado'] == True:
+                    evento.validado = True
+                    if evento.equipo:
+                        evento.equipo.estado_operativo = 'Operativo'
+                else:
+                    return jsonify({"status": "error", "message": "Un técnico solo puede validar un evento"}), 403
+            else:
+                return jsonify({"status": "error", "message": "No se enviaron cambios permitidos"}), 400
+        else:
+            return jsonify({"status": "error", "message": "Sin permisos"}), 403
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Evento actualizado correctamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # --- DIAGNÓSTICOS ---
 @technical_record_bp.route('/diagnosticos', methods=['POST'])
@@ -121,32 +156,75 @@ def create_mantenimiento():
 @technical_record_bp.route('/mantenimientos', methods=['GET'])
 @jwt_required()
 def get_mantenimientos():
-    mantenimientos = Mantenimiento.query.all()
-    return jsonify({"status": "success", "mantenimientos": [m.to_dict() for m in mantenimientos]}), 200
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol == 'Usuario Solicitante':
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+        
+    try:
+        mantenimientos = Mantenimiento.query.all()
+        return jsonify({"status": "success", "mantenimientos": [m.to_dict() for m in mantenimientos]}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @technical_record_bp.route('/diagnosticos', methods=['GET'])
 @jwt_required()
 def get_diagnosticos():
-    diagnosticos = Diagnostico.query.all()
-    return jsonify({"status": "success", "diagnosticos": [d.to_dict() for d in diagnosticos]}), 200
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol == 'Usuario Solicitante':
+        return jsonify({"status": "error", "message": "Acceso denegado"}), 403
+        
+    try:
+        diagnosticos = Diagnostico.query.all()
+        return jsonify({"status": "success", "diagnosticos": [d.to_dict() for d in diagnosticos]}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @technical_record_bp.route('/diagnosticos/<int:id_evento>', methods=['PUT'])
 @jwt_required()
 def update_diagnostico(id_evento):
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos"}), 403
+
     diag = Diagnostico.query.get(id_evento)
-    if not diag: return jsonify({"status": "error", "message": "No encontrado"}), 404
+    if not diag:
+        return jsonify({"status": "error", "message": "Diagnóstico no encontrado"}), 404
+        
     data = request.json
-    if 'validacion_tecnico' in data: diag.validacion_tecnico = data['validacion_tecnico']
-    db.session.commit()
-    return jsonify({"status": "success", "diagnostico": diag.to_dict()}), 200
+    try:
+        if 'log_chatbot' in data: diag.log_chatbot = data['log_chatbot']
+        if 'resultado_preeliminar' in data: diag.resultado_preeliminar = data['resultado_preeliminar']
+        if 'validacion_tecnico' in data: diag.validacion_tecnico = data['validacion_tecnico']
+        
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Diagnóstico actualizado", "diagnostico": diag.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @technical_record_bp.route('/mantenimientos/<int:id_evento>', methods=['PUT'])
 @jwt_required()
 def update_mantenimiento(id_evento):
+    usuario = Usuario.query.get(get_jwt_identity())
+    if usuario.rol not in ['Administrador', 'Técnico']:
+        return jsonify({"status": "error", "message": "No tienes permisos"}), 403
+
     mant = Mantenimiento.query.get(id_evento)
-    if not mant: return jsonify({"status": "error", "message": "No encontrado"}), 404
+    if not mant:
+        return jsonify({"status": "error", "message": "Mantenimiento no encontrado"}), 404
+        
     data = request.json
-    if 'descripcion_trabajo' in data: mant.descripcion_trabajo = data['descripcion_trabajo']
-    if 'piezas_reemplazadas' in data: mant.piezas_reemplazadas = data['piezas_reemplazadas']
-    db.session.commit()
-    return jsonify({"status": "success", "mantenimiento": mant.to_dict()}), 200
+    try:
+        if 'tipo' in data: mant.tipo = data['tipo']
+        if 'fecha_entrega' in data:
+            # Si viene como string, convertir a datetime
+            if isinstance(data['fecha_entrega'], str):
+                mant.fecha_entrega = datetime.strptime(data['fecha_entrega'], '%Y-%m-%d %H:%M:%S')
+        if 'descripcion_trabajo' in data: mant.descripcion_trabajo = data['descripcion_trabajo']
+        if 'piezas_reemplazadas' in data: mant.piezas_reemplazadas = data['piezas_reemplazadas']
+        
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Mantenimiento actualizado", "mantenimiento": mant.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500

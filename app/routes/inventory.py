@@ -10,10 +10,17 @@ inventory_bp = Blueprint('inventory', __name__)
 @inventory_bp.route('/equipos', methods=['POST'])
 @jwt_required()
 def create_equipo():
+    usuario_creador = Usuario.query.get(get_jwt_identity())
     data = request.json
+    
+    # Lógica de propietario original
+    id_propietario = usuario_creador.id_usuario
+    if usuario_creador.rol in ['Administrador', 'Técnico'] and 'id_usuario' in data:
+        id_propietario = data['id_usuario']
+
     try:
         nuevo_equipo = Equipo(
-            id_usuario=data.get('id_usuario'),
+            id_usuario=id_propietario,
             tipo_equipo=data.get('tipo_equipo'),
             marca=data.get('marca'),
             modelo=data.get('modelo'),
@@ -25,7 +32,7 @@ def create_equipo():
             en_garantia=data.get('en_garantia', False)
         )
         db.session.add(nuevo_equipo)
-        db.session.flush()
+        db.session.flush() # Para obtener el id_equipo antes del commit
 
         if 'especificaciones' in data:
             specs = data['especificaciones']
