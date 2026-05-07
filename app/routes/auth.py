@@ -85,23 +85,35 @@ def solicitar_recuperacion():
 
 @auth_bp.route('/restablecer-password', methods=['POST'])
 def restablecer_password():
-    data = request.json
-    token = data.get('token')
-    nueva_pass = data.get('nueva_password')
-
+    print(">>> Iniciando proceso de restablecimiento")
     try:
-        decoded = decode_token(token)
-        user_id = decoded['sub']
-        usuario = Usuario.query.get(user_id)
+        data = request.get_json(silent=True) or {}
+        token = data.get('token') or request.args.get('token')
+        nueva_pass = data.get('password')
+
+        if not token or not nueva_pass:
+            return jsonify({"status": "error", "message": "Faltan datos (token o contraseña)"}), 200
+
+        # Decodificación manual aislada
+        try:
+            decoded = decode_token(token)
+            user_id = decoded['sub']
+            usuario = Usuario.query.get(int(user_id))
+        except Exception as jwt_err:
+            print(f">>> Error JWT: {jwt_err}")
+            return jsonify({"status": "error", "message": "Enlace inválido o caducado", "detail": str(jwt_err)}), 200
+
         if not usuario:
-            return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
+            return jsonify({"status": "error", "message": "Usuario no encontrado"}), 200
             
         usuario.contraseña = generate_password_hash(nueva_pass)
         db.session.commit()
+        print(f">>> Éxito: Contraseña cambiada para {usuario.correo}")
         return jsonify({"status": "success", "message": "Contraseña actualizada correctamente"}), 200
+
     except Exception as e:
-        print(f">>> Error decodificando token de reset: {e}")
-        return jsonify({"status": "error", "message": f"Token inválido o expirado: {str(e)}"}), 401
+        print(f">>> Error General: {e}")
+        return jsonify({"status": "error", "message": "Error interno", "detail": str(e)}), 200
 
 @auth_bp.route('/usuarios/<int:id>', methods=['PUT'])
 @jwt_required()
