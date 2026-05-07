@@ -89,10 +89,16 @@ def restablecer_password():
     try:
         data = request.get_json(silent=True) or {}
         token = data.get('token') or request.args.get('token')
-        nueva_pass = data.get('password')
+        nueva_pass = data.get('password') or data.get('nueva_password') # Aceptamos ambas por si acaso
 
         if not token or not nueva_pass:
-            return jsonify({"status": "error", "message": "Faltan datos (token o contraseña)"}), 200
+            recibido = list(data.keys())
+            return jsonify({
+                "status": "error", 
+                "message": f"Faltan datos. Recibido: {recibido}",
+                "debug_token": "SÍ" if token else "NO",
+                "debug_pass": "SÍ" if nueva_pass else "NO"
+            }), 200
 
         # Decodificación manual aislada
         try:
