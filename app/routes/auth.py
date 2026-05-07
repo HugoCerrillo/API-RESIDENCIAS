@@ -89,7 +89,8 @@ def restablecer_password():
     try:
         data = request.get_json(silent=True) or {}
         token = data.get('token') or request.args.get('token')
-        nueva_pass = data.get('password') or data.get('nueva_password') # Aceptamos ambas por si acaso
+        # Aceptamos todas las posibles variantes que hemos visto
+        nueva_pass = data.get('password') or data.get('nueva_password') or data.get('nueva_contraseña')
 
         if not token or not nueva_pass:
             recibido = list(data.keys())
