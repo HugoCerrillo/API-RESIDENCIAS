@@ -7,8 +7,8 @@ load_dotenv()
 
 class Config:
     # Seguridad
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'qJTJ%_(7(t(FW2ggS5X8#h!1ftm!i+')
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'qJTJ%_(7(t(FW2ggS5X8#h!1ftm!i+')
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'default-secret-key')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'jwt-default-secret')
     
     # Base de Datos Principal
     DB_USER = os.environ.get('DB_USER')

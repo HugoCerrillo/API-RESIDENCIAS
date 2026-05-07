@@ -53,13 +53,14 @@ def create_app(config_class=Config):
             
             # 2. Configurar tarea recurrente de alertas
             if not scheduler.running:
+                scheduler.start() # <--- ¡ESTO FALTABA!
                 scheduler.add_job(
                     id='job_alertas_30min', 
                     func=verificar_alertas_programadas, 
                     trigger='interval', 
                     minutes=30
                 )
-                print(">>> Scheduler Job registrado: Alertas cada 30 minutos.")
+                print(">>> Scheduler Job registrado e INICIADO: Alertas cada 30 minutos.")
         except Exception as e:
             print(f">>> Error en inicialización de fábrica: {e}")
             
