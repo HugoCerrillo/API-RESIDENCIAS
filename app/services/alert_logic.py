@@ -7,6 +7,7 @@ from ..config import Config
 
 def verificar_alertas_programadas():
     """Lógica central para procesar alertas (2 días antes)"""
+    print(">>> [SCHEDULER] Verificando alertas en segundo plano...")
     with current_app.app_context():
         try:
             # Cargamos configuración para SMTP
