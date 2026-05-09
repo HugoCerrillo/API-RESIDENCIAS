@@ -10,10 +10,10 @@ def verificar_alertas_programadas():
     import os, fcntl
     
     # Usamos un candado de archivo para que solo un worker de Gunicorn trabaje
-    lock_file = open(".scheduler.lock", "wb")
+    lock_file = open(".scheduler_main.lock", "wb")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        print(">>> [SCHEDULER] Candado obtenido. Verificando alertas...")
+        print(">>> [SCHEDULER] Candado obtenido. Verificando alertas...", flush=True)
     except (IOError, BlockingIOError):
         # Si otro worker ya tiene el candado, este proceso no hace nada
         lock_file.close()
@@ -35,7 +35,7 @@ def verificar_alertas_programadas():
                 .filter(Alerta.estatus == 'Pendiente')
             
             alertas = query.all()
-            print(f">>> [SCHEDULER] Alertas pendientes encontradas en BD: {len(alertas)}")
+            print(f">>> [SCHEDULER] Alertas encontradas: {len(alertas)}", flush=True)
             count = 0
             
             if not alertas:
