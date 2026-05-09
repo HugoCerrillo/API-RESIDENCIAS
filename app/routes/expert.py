@@ -7,10 +7,10 @@ from ..services.prolog_service import prolog, sincronizar_hechos_prolog
 
 expert_bp = Blueprint('expert', __name__)
 
-# Configuración de rutas para Prolog (apuntando a la raíz del proyecto)
+# Configuración de rutas para Prolog (apuntando a la carpeta motor_prolog)
 BASE_DIR = os.getcwd()
-path_hechos = os.path.join(BASE_DIR, 'hechos.pl')
-path_reglas = os.path.join(BASE_DIR, 'reglas.pl')
+path_hechos = os.path.join(BASE_DIR, 'motor_prolog', 'hechos.pl')
+path_reglas = os.path.join(BASE_DIR, 'motor_prolog', 'reglas.pl')
 
 
 #-------------------------------------------------------------------------------------------------------------
