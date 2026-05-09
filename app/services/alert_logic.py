@@ -48,33 +48,43 @@ def verificar_alertas_programadas():
             
             for al, user, eq in alertas:
                 fecha_disparo = al.fecha_programada - timedelta(days=2)
+                print(f">>> [DEBUG] Procesando alerta '{al.titulo}'. Fecha Prog: {al.fecha_programada}, Fecha Disparo: {fecha_disparo}, Hoy: {hoy}", flush=True)
                 
                 if hoy >= fecha_disparo:
-                    #redactamos el correo con MIMEText
-                    cuerpo = (f"Hola {user.nombre},\n\n"
-                             f"Esta es una notificacion automatica de ExperTrack.\n"
-                             f"Tienes una actividad programada para el equipo: {eq.codigo_inventario} ({eq.marca} {eq.modelo}).\n\n"
-                             f"Detalles de la alerta:\n"
-                             f"- Titulo: {al.titulo}\n"
-                             f"- Descripcion: {al.descripcion}\n"
-                             f"- Fecha Programada: {al.fecha_programada}\n\n"
-                             f"Por favor, toma las medidas necesarias.\n\n"
-                             f"Atentamente,\nSistema ExperTrack")
-                    
-                    msg = MIMEText(cuerpo)
-                    msg['Subject'] = f"ALERTA PREVENTIVA: {al.titulo}"
-                    msg['From'] = SMTP_USER
-                    msg['To'] = user.correo
-                    
-                    #enviamos
-                    server.sendmail(SMTP_USER, user.correo, msg.as_string())
-                    
-                    #marcamos como enviada
-                    al.estatus = 'Enviada'
-                    count += 1
-                    print(f">>> Alerta enviada a {user.correo}")
+                    print(f">>> [DEBUG] ¡Es hora de enviar! Conectando a SMTP...", flush=True)
+                    #iniciamos conexión SMTP dentro del if para no abrirla si no hay nada que enviar
+                    try:
+                        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+                        server.starttls()
+                        server.login(SMTP_USER, SMTP_PASSWORD)
+                        
+                        cuerpo = (f"Hola {user.nombre},\n\n"
+                                 f"Esta es una notificacion automatica de ExperTrack.\n"
+                                 f"Tienes una actividad programada para el equipo: {eq.codigo_inventario} ({eq.marca} {eq.modelo}).\n\n"
+                                 f"Detalles de la alerta:\n"
+                                 f"- Titulo: {al.titulo}\n"
+                                 f"- Descripcion: {al.descripcion}\n"
+                                 f"- Fecha Programada: {al.fecha_programada}\n\n"
+                                 f"Por favor, toma las medidas necesarias.\n\n"
+                                 f"Atentamente,\nSistema ExperTrack")
+                        
+                        msg = MIMEText(cuerpo)
+                        msg['Subject'] = f"ALERTA PREVENTIVA: {al.titulo}"
+                        msg['From'] = SMTP_USER
+                        msg['To'] = user.correo
+                        
+                        server.sendmail(SMTP_USER, user.correo, msg.as_string())
+                        server.quit()
+                        
+                        al.estatus = 'Enviada'
+                        count += 1
+                        print(f">>> [OK] Alerta enviada con éxito a {user.correo}", flush=True)
+                    except Exception as smtp_e:
+                        print(f">>> [ERROR SMTP] No se pudo enviar el correo: {smtp_e}", flush=True)
+                else:
+                    print(f">>> [DEBUG] Aún no es tiempo para la alerta '{al.titulo}'", flush=True)
 
-            server.quit() #cerramos la conexion
+            # El cierre de conexión ahora se maneja dentro del loop
             
             #si se envio al menos una alerta, confirmamos la transaccion
             if count > 0:
