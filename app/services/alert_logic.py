@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from ..models import db, Alerta, Usuario, Equipo
 from ..config import Config
 
-def verificar_alertas_programadas():
-    """Lógica central para procesar alertas con candado para Gunicorn"""
+def verificar_alertas_programadas(app):
+    """Lógica central para procesar alertas con contexto de APP real"""
     import os, fcntl
     
     # Usamos un candado de archivo para que solo un worker de Gunicorn trabaje
@@ -20,7 +20,7 @@ def verificar_alertas_programadas():
         return 0
 
     try:
-        with current_app.app_context():
+        with app.app_context():
             # Cargamos configuración para SMTP
             SMTP_SERVER = Config.SMTP_SERVER
             SMTP_PORT = Config.SMTP_PORT
@@ -29,16 +29,12 @@ def verificar_alertas_programadas():
 
             hoy = (datetime.utcnow() + timedelta(hours=-6)).date()
             #obtenemos alertas pendientes junto con los datos del usuario y equipo
-            query = db.session.query(Alerta, Usuario, Equipo)\
-                .join(Usuario, Alerta.id_usuario == Usuario.id_usuario)\
-                .join(Equipo, Alerta.id_equipo == Equipo.id_equipo)\
-                .filter(Alerta.estatus == 'Pendiente')
+            # Consulta simplificada
+            alertas_pendientes = Alerta.query.filter_by(estatus='Pendiente').all()
+            print(f">>> [SCHEDULER] Alertas pendientes (bruto): {len(alertas_pendientes)}", flush=True)
             
-            alertas = query.all()
-            print(f">>> [SCHEDULER] Alertas encontradas: {len(alertas)}", flush=True)
             count = 0
-            
-            if not alertas:
+            if not alertas_pendientes:
                 return 0
 
             #iniciamos conexión SMTP
@@ -46,9 +42,17 @@ def verificar_alertas_programadas():
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             
-            for al, user, eq in alertas:
+            for al in alertas_pendientes:
+                # Obtenemos usuario y equipo individualmente
+                user = Usuario.query.get(al.id_usuario)
+                eq = Equipo.query.get(al.id_equipo)
+                
+                if not user or not eq:
+                    print(f">>> [DEBUG] Alerta {al.id} ignorada (falta usuario id:{al.id_usuario} o equipo id:{al.id_equipo})", flush=True)
+                    continue
+
                 fecha_disparo = al.fecha_programada - timedelta(days=2)
-                print(f">>> [DEBUG] Procesando alerta '{al.titulo}'. Fecha Prog: {al.fecha_programada}, Fecha Disparo: {fecha_disparo}, Hoy: {hoy}", flush=True)
+                print(f">>> [DEBUG] Procesando alerta '{al.titulo}'. Fecha Prog: {al.fecha_programada}, Hoy: {hoy}", flush=True)
                 
                 if hoy >= fecha_disparo:
                     print(f">>> [DEBUG] ¡Es hora de enviar! Conectando a SMTP...", flush=True)
