@@ -58,7 +58,7 @@ def create_app(config_class=Config):
                     id='job_alertas_30min', 
                     func=verificar_alertas_programadas, 
                     trigger='interval', 
-                    minutes=2,
+                    minutes=15,
                     args=[app]  # <--- Pasamos la instancia de la app
                 )
                 print(">>> Scheduler Job registrado e INICIADO: Alertas cada 30 minutos.")
