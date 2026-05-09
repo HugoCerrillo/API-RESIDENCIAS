@@ -6,10 +6,21 @@ from ..models import db, Alerta, Usuario, Equipo
 from ..config import Config
 
 def verificar_alertas_programadas():
-    """Lógica central para procesar alertas (2 días antes)"""
-    print(">>> [SCHEDULER] Verificando alertas en segundo plano...")
-    with current_app.app_context():
-        try:
+    """Lógica central para procesar alertas con candado para Gunicorn"""
+    import os, fcntl
+    
+    # Usamos un candado de archivo para que solo un worker de Gunicorn trabaje
+    lock_file = open(".scheduler.lock", "wb")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        print(">>> [SCHEDULER] Candado obtenido. Verificando alertas...")
+    except (IOError, BlockingIOError):
+        # Si otro worker ya tiene el candado, este proceso no hace nada
+        lock_file.close()
+        return 0
+
+    try:
+        with current_app.app_context():
             # Cargamos configuración para SMTP
             SMTP_SERVER = Config.SMTP_SERVER
             SMTP_PORT = Config.SMTP_PORT

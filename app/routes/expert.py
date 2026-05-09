@@ -355,13 +355,14 @@ def sincronizar_hechos_prolog():
         ] #lista de lineas que se van a escribir en el archivo hechos.pl
         
         for f in fallas:
-            #escapar comillas simples duplicandolas para Prolog
             diag = f.diagnostico.replace("'", "''")
             rec = f.recomendacion.replace("'", "''")
-            pregunta = f.pregunta_pista.replace("'", "''")
-            
-            #generar lineas de hechos
             lines.append(f"falla_info({f.id}, '{f.tipo_equipo}', '{diag}', '{rec}').")
+        
+        lines.append("\n") # Separador
+        
+        for f in fallas:
+            pregunta = f.pregunta_pista.replace("'", "''")
             sintoma_clave = f.sintoma.clave if f.sintoma else "sintoma_desconocido"
             lines.append(f"condicion({f.id}, {sintoma_clave}, '{pregunta}').")
         
