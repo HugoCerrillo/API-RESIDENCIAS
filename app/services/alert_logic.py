@@ -35,6 +35,7 @@ def verificar_alertas_programadas():
                 .filter(Alerta.estatus == 'Pendiente')
             
             alertas = query.all()
+            print(f">>> [SCHEDULER] Alertas pendientes encontradas en BD: {len(alertas)}")
             count = 0
             
             if not alertas:
