@@ -18,3 +18,13 @@ def check_connection():
             "message": "No se pudo conectar a la base de datos",
             "error_detail": str(e)
         }), 500
+
+@system_bp.route('/estado-scheduler', methods=['GET'])
+def check_scheduler():
+    # Importamos dinámicamente para evitar circulares
+    from .. import scheduler
+    return jsonify({
+        "status": "success",
+        "scheduler_running": scheduler.running,
+        "jobs": [str(job) for job in scheduler.get_jobs()]
+    }), 200
