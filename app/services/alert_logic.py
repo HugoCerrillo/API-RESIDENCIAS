@@ -80,6 +80,8 @@ def verificar_alertas_programadas():
                 db.session.commit()
             return count
             
-        except Exception as e:
-            print(f"Error en verificacion de alertas: {e}")
-            return 0
+    except Exception as e:
+        print(f"Error en verificacion de alertas: {e}")
+        return 0
+    finally:
+        lock_file.close()
