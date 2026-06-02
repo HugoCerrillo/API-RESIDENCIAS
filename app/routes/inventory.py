@@ -27,6 +27,26 @@ def create_equipo():
     if usuario.rol in ['Administrador', 'Técnico'] and 'id_usuario' in data:
         id_propietario = data['id_usuario']
 
+    # Validar unicidad del número de serie
+    numero_serie = data.get('numero_serie')
+    if numero_serie:
+        existe_serie = Equipo.query.filter_by(numero_serie=numero_serie).first()
+        if existe_serie:
+            return jsonify({
+                "status": "error",
+                "message": "El número de serie ya está registrado en otro equipo."
+            }), 400
+
+    # Validar unicidad del código de inventario
+    codigo_inventario = data.get('codigo_inventario')
+    if codigo_inventario:
+        existe_codigo = Equipo.query.filter_by(codigo_inventario=codigo_inventario).first()
+        if existe_codigo:
+            return jsonify({
+                "status": "error",
+                "message": "El código de inventario ya está registrado en otro equipo."
+            }), 400
+
     try:
         #crear el Equipo 
         nuevo_equipo = Equipo(
@@ -157,6 +177,24 @@ def update_equipo(id):
         
     data = request.json #obtenemos los datos del equipo
     
+    # Validar que el nuevo número de serie no esté registrado en otro equipo
+    if 'numero_serie' in data and data['numero_serie'] != equipo.numero_serie:
+        existe_serie = Equipo.query.filter_by(numero_serie=data['numero_serie']).first()
+        if existe_serie:
+            return jsonify({
+                "status": "error",
+                "message": "El número de serie ya está registrado en otro equipo."
+            }), 400
+
+    # Validar que el nuevo código de inventario no esté registrado en otro equipo
+    if 'codigo_inventario' in data and data['codigo_inventario'] != equipo.codigo_inventario:
+        existe_codigo = Equipo.query.filter_by(codigo_inventario=data['codigo_inventario']).first()
+        if existe_codigo:
+            return jsonify({
+                "status": "error",
+                "message": "El código de inventario ya está registrado en otro equipo."
+            }), 400
+
     try:
         # 1. Actualizar datos basicos
         if 'id_usuario' in data: equipo.id_usuario = data['id_usuario']        
