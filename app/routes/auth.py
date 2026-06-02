@@ -102,6 +102,15 @@ def update_usuario(id):
     
     data = request.json #obtenemos los datos en json
     
+    # Si se intenta cambiar el rol de un administrador a otro rol
+    if 'rol' in data and data['rol'] != 'Administrador' and usuario.rol == 'Administrador':
+        admins_count = Usuario.query.filter_by(rol='Administrador').count()
+        if admins_count <= 1:
+            return jsonify({
+                "status": "error",
+                "message": "No se puede cambiar el rol del único administrador del sistema. Debe quedar al menos un administrador."
+            }), 400
+
     try:
         #actualizamos los datos del usuario si se envian
         if 'nombre' in data: usuario.nombre = data['nombre']
@@ -198,6 +207,28 @@ def restablecer_password():
     
     if not token or not nueva_password: #si no se llega un token o una nueva contraseña
         return jsonify({"status": "error", "message": "Faltan datos requeridos (token o nueva_contraseña)"}), 400
+        
+    # Validación de complejidad de la contraseña
+    if len(nueva_password) < 8:
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe tener al menos 8 caracteres"
+        }), 400
+    if not re.search(r"[A-Z]", nueva_password):
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe contener al menos una letra mayúscula"
+        }), 400
+    if not re.search(r"\d", nueva_password):
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe contener al menos un número"
+        }), 400
+    if not re.search(r"[^a-zA-Z0-9]", nueva_password):
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe contener al menos un carácter especial (ej: * . @ $ ! % &)"
+        }), 400
         
     try:
         #decodificamos el token (si ya expiro los 15 min, lanzara excepcion automaticamente)
