@@ -1,7 +1,7 @@
 import re
 from flask import Blueprint, request, jsonify, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token, unset_jwt_cookies
 from datetime import datetime, timedelta
 from ..models import db, Usuario
 from ..services.email_service import enviar_correo_recuperacion
@@ -102,6 +102,11 @@ def update_usuario(id):
     
     data = request.json #obtenemos los datos en json
     
+    # Detectar si el usuario actual se está quitando el rol de Administrador
+    current_user_id = get_jwt_identity()
+    is_self = (current_user_id and int(current_user_id) == id)
+    se_quito_admin = False
+
     # Si se intenta cambiar el rol de un administrador a otro rol
     if 'rol' in data and data['rol'] != 'Administrador' and usuario.rol == 'Administrador':
         admins_count = Usuario.query.filter_by(rol='Administrador').count()
@@ -110,6 +115,8 @@ def update_usuario(id):
                 "status": "error",
                 "message": "No se puede cambiar el rol del único administrador del sistema. Debe quedar al menos un administrador."
             }), 400
+        if is_self:
+            se_quito_admin = True
 
     try:
         #actualizamos los datos del usuario si se envian
@@ -126,11 +133,22 @@ def update_usuario(id):
             usuario.contraseña = generate_password_hash(data['contraseña'])
 
         db.session.commit() #guardamos los cambios en la base de datos
-        return jsonify({
+        
+        response_data = {
             "status": "success",
             "message": "Usuario actualizado correctamente",
             "user": usuario.to_dict()
-        }), 200
+        }
+        
+        # Si el administrador se quitó el privilegio a sí mismo, destruimos las cookies de sesión
+        if se_quito_admin:
+            response_data["session_terminated"] = True
+            response_data["message"] = "Rol actualizado correctamente. Tu sesión ha sido cerrada debido al cambio de privilegios."
+            response = make_response(jsonify(response_data), 200)
+            unset_jwt_cookies(response)
+            return response
+
+        return jsonify(response_data), 200
 
     except Exception as e:
         db.session.rollback() #si algo falla, cancelamos la operacion con un rollback
