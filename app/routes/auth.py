@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, jsonify, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, set_access_cookies, decode_token
@@ -221,6 +222,35 @@ def restablecer_password():
 #------------------------------------------------------------------------------------------------------------
 #logica para crear usuarios
 def crear_usuario_logica(data):
+    contrasena = data.get('contraseña')
+    if not contrasena:
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña es requerida"
+        }), 400
+
+    # Validación de complejidad de la contraseña
+    if len(contrasena) < 8:
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe tener al menos 8 caracteres"
+        }), 400
+    if not re.search(r"[A-Z]", contrasena):
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe contener al menos una letra mayúscula"
+        }), 400
+    if not re.search(r"\d", contrasena):
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe contener al menos un número"
+        }), 400
+    if not re.search(r"[^a-zA-Z0-9]", contrasena):
+        return jsonify({
+            "status": "error",
+            "message": "La contraseña debe contener al menos un carácter especial (ej: * . @ $ ! % &)"
+        }), 400
+
     #primero verificamos si el correo ya existe
     existe = Usuario.query.filter_by(correo=data.get('correo')).first() #buscamos el usuario por correo
     if existe:
