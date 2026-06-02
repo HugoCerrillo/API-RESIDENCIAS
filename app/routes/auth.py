@@ -135,6 +135,11 @@ def update_usuario(id):
 @admin_required #solo los administradores pueden acceder a este endpoint
 @jwt_required() #solo los usuarios autenticados pueden acceder a esta ruta
 def delete_usuario(id):
+    # Evitar que el usuario administrador se elimine a sí mismo
+    current_user_id = get_jwt_identity()
+    if current_user_id and int(current_user_id) == id:
+        return jsonify({"status": "error", "message": "No puedes eliminar tu propia cuenta"}), 400
+
     usuario = Usuario.query.get(id) #obtenemos el usuario por id
     if not usuario:
         return jsonify({"status": "error", "message": "Usuario no encontrado"}), 404
