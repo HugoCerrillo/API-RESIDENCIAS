@@ -20,6 +20,10 @@ def login():
     user = Usuario.query.filter_by(correo=email).first() #buscamos el usuario por correo
 
     if user and check_password_hash(user.contraseña, password): #verificamos que el usuario exista y la contraseña sea correcta
+        # Verificar que la cuenta esté activa
+        if not user.estatus:
+            return jsonify({"status": "error", "message": "Tu cuenta está inactiva. Por favor contacta al administrador."}), 401
+
         access_token = create_access_token(identity=str(user.id_usuario)) #creamos el token
         response = make_response(jsonify({
             "status": "success",
