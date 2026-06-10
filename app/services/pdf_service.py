@@ -44,14 +44,16 @@ class PDF_Inventario(PDF_Base):
         self.set_text_color(128, 128, 128)
         fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
         self.cell(60, 10, f'Generado el: {fecha_gen}', 0, 0, 'L')
-        self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
+        self.cell(70, 10, '© 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
         self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
+
+
 
 class PDF_Expediente(PDF_Base):
     def header(self):
         logos = self.get_logos()
         try:
-            self.image(logos["sep"], 10, 10, 35)
+            self.image(logos["sep"], 10, 10, 35 )
             self.image(logos["tecnm"], 55, 10, 35)
             self.image(logos["itl"], 110, 8, 28)
             self.image(logos["exper"], 155, 10, 45)
@@ -75,7 +77,7 @@ class PDF_Expediente(PDF_Base):
         self.set_text_color(128, 128, 128)
         fecha_gen = (datetime.utcnow() + timedelta(hours=-6)).strftime("%d/%m/%Y %H:%M")
         self.cell(60, 10, f'Fecha: {fecha_gen}', 0, 0, 'L')
-        self.cell(70, 10, '(c) 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
+        self.cell(70, 10, '© 2026 ExperTrack - Todos los derechos reservados', 0, 0, 'C')
         self.cell(60, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'R')
 
 def generar_inventario_pdf(equipos, usuario_gen):
