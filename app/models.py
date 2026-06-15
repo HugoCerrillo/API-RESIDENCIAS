@@ -210,7 +210,7 @@ class Mantenimiento(db.Model):
     def to_dict(self):
         return {
             "id_evento": self.id_evento,
-            "tipo": self.tipo,
+            "tipo": self.tipo.value if hasattr(self.tipo, 'value') else (self.tipo.name if hasattr(self.tipo, 'name') else str(self.tipo)) if self.tipo else None,
             "fecha_entrega": self.fecha_entrega.isoformat() if self.fecha_entrega else None,
             "descripcion_trabajo": self.descripcion_trabajo or "",
             "piezas_reemplazadas": self.piezas_reemplazadas or ""
@@ -236,7 +236,7 @@ class Alerta(db.Model):
             "id_alerta": self.id_alerta,
             "id_usuario": self.id_usuario,
             "id_equipo": self.id_equipo,
-            "estatus": self.estatus,
+            "estatus": self.estatus.value if hasattr(self.estatus, 'value') else (self.estatus.name if hasattr(self.estatus, 'name') else str(self.estatus)) if self.estatus else None,
             "titulo": self.titulo or "",
             "descripcion": self.descripcion or "",
             "fecha_programada": self.fecha_programada.isoformat() if self.fecha_programada else None
@@ -305,7 +305,7 @@ class FallaHecho(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "tipo_equipo": self.tipo_equipo,
+            "tipo_equipo": self.tipo_equipo.value if hasattr(self.tipo_equipo, 'value') else (self.tipo_equipo.name if hasattr(self.tipo_equipo, 'name') else str(self.tipo_equipo)) if self.tipo_equipo else None,
             "sintoma_id": self.sintoma_id,
             "categoria_id": self.categoria_id,
             "pregunta_pista": self.pregunta_pista,
