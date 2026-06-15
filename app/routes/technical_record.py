@@ -316,18 +316,18 @@ def update_diagnostico(id_evento):
 #------------------------------------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------------------------------------
-#endpoint para crear un mantenimiento (Solo Técnicos)
+#endpoint para crear un mantenimiento (Admin y Técnico)
 @technical_record_bp.route('/mantenimientos', methods=['POST'])
 @jwt_required()
 def create_mantenimiento():
     usuario_id = get_jwt_identity() #obtenemos el id del usuario
     usuario = Usuario.query.get(usuario_id) #obtenemos el usuario
     
-    #RESTRICCIÓN: Solo el Técnico puede crear el mantenimiento
-    if usuario.rol != 'Técnico':
+    #RESTRICCIÓN: Solo Técnico o Administrador pueden registrar el mantenimiento
+    if usuario.rol not in ['Técnico', 'Administrador']:
         return jsonify({
             "status": "error", 
-            "message": "Solo el técnico asignado puede registrar el mantenimiento final"
+            "message": "Solo el técnico asignado o el administrador pueden registrar el mantenimiento final"
         }), 403
         
     data = request.json #obtenemos los datos en json
@@ -350,11 +350,24 @@ def create_mantenimiento():
                 "message": "Ya existe un registro de mantenimiento para este evento"
             }), 400
             
-        #3. Crear mantenimiento
+        #3. Parsear fecha de entrega de forma segura
+        fecha_raw = data.get('fecha_entrega')
+        fecha_parsed = None
+        if fecha_raw:
+            try:
+                fecha_raw_clean = fecha_raw.split('.')[0].replace('Z', '')
+                if 'T' in fecha_raw_clean:
+                    fecha_parsed = datetime.fromisoformat(fecha_raw_clean)
+                else:
+                    fecha_parsed = datetime.strptime(fecha_raw_clean, '%Y-%m-%d')
+            except ValueError:
+                fecha_parsed = None
+
+        #4. Crear mantenimiento
         nuevo_mantenimiento = Mantenimiento(
             id_evento=id_evento,
             tipo=data.get('tipo'), # 'Preventivo' o 'Correctivo'
-            fecha_entrega=data.get('fecha_entrega'),
+            fecha_entrega=fecha_parsed,
             descripcion_trabajo=data.get('descripcion_trabajo'),
             piezas_reemplazadas=data.get('piezas_reemplazadas')
         )
@@ -427,7 +440,19 @@ def update_mantenimiento(id_evento):
     
     try:
         if 'tipo' in data: mantenimiento.tipo = data['tipo']
-        if 'fecha_entrega' in data: mantenimiento.fecha_entrega = data['fecha_entrega']
+        if 'fecha_entrega' in data:
+            fecha_raw = data['fecha_entrega']
+            fecha_parsed = None
+            if fecha_raw:
+                try:
+                    fecha_raw_clean = fecha_raw.split('.')[0].replace('Z', '')
+                    if 'T' in fecha_raw_clean:
+                        fecha_parsed = datetime.fromisoformat(fecha_raw_clean)
+                    else:
+                        fecha_parsed = datetime.strptime(fecha_raw_clean, '%Y-%m-%d')
+                except ValueError:
+                    fecha_parsed = None
+            mantenimiento.fecha_entrega = fecha_parsed
         if 'descripcion_trabajo' in data: mantenimiento.descripcion_trabajo = data['descripcion_trabajo']
         if 'piezas_reemplazadas' in data: mantenimiento.piezas_reemplazadas = data['piezas_reemplazadas']
         
