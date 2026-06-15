@@ -210,7 +210,7 @@ class Mantenimiento(db.Model):
     def to_dict(self):
         return {
             "id_evento": self.id_evento,
-            "tipo": self.tipo.value if hasattr(self.tipo, 'value') else (self.tipo.name if hasattr(self.tipo, 'name') else str(self.tipo)) if self.tipo else None,
+            "tipo": str(self.tipo) if self.tipo is not None else None,
             "fecha_entrega": self.fecha_entrega.isoformat() if self.fecha_entrega else None,
             "descripcion_trabajo": self.descripcion_trabajo or "",
             "piezas_reemplazadas": self.piezas_reemplazadas or ""
