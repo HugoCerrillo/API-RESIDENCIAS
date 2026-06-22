@@ -199,7 +199,7 @@ class Mantenimiento(db.Model):
     
     id_evento = db.Column(db.Integer, db.ForeignKey('Evento.id_evento', ondelete='CASCADE'), primary_key=True)
     tipo = db.Column(db.Enum('Preventivo', 'Correctivo'), nullable=False)
-    fecha_entrega = db.Column(db.Date)
+    fecha_entrega = db.Column(db.DateTime)
     descripcion_trabajo = db.Column(db.Text)
     piezas_reemplazadas = db.Column(db.Text)
 
